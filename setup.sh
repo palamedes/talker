@@ -16,6 +16,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 VENDOR="$ROOT/vendor/LongCat-Video"
 WEIGHTS="$ROOT/weights/LongCat-Video-Avatar-1.5"
+# The avatar demo script resolves the base model at <checkpoint_dir>/../LongCat-Video
+# for its tokenizer / text encoder / VAE — so this dir name and location matter.
+WEIGHTS_BASE="$ROOT/weights/LongCat-Video"
 
 step() { printf '\n\033[1m== %s ==\033[0m\n' "$*"; }
 fail() { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -171,6 +174,18 @@ if [[ ! -e "$WEIGHTS/.download-complete" ]]; then
     touch "$WEIGHTS/.download-complete"
 else
     echo "already downloaded: $WEIGHTS"
+fi
+
+step "Downloading base LongCat-Video components (tokenizer/text_encoder/vae only)"
+# The avatar pipeline borrows these from the base model repo; we deliberately
+# skip the base repo's own 13.6B DiT (~27 GB) — the avatar has its own.
+if [[ ! -e "$WEIGHTS_BASE/.download-complete" ]]; then
+    hf download meituan-longcat/LongCat-Video \
+        --include "tokenizer/*" "text_encoder/*" "vae/*" \
+        --local-dir "$WEIGHTS_BASE"
+    touch "$WEIGHTS_BASE/.download-complete"
+else
+    echo "already downloaded: $WEIGHTS_BASE"
 fi
 
 step "Done"

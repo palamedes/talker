@@ -29,6 +29,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 VENDOR = ROOT / "vendor" / "LongCat-Video"
 WEIGHTS = ROOT / "weights" / "LongCat-Video-Avatar-1.5"
+# The avatar pipeline loads tokenizer/text_encoder/vae from <WEIGHTS>/../LongCat-Video
+WEIGHTS_BASE = ROOT / "weights" / "LongCat-Video"
 INFER_SCRIPT = "run_demo_avatar_single_audio_to_video.py"
 
 # Editors that say "29.97" / "23.976" / "59.94" mean these exact ratios.
@@ -260,6 +262,9 @@ def main():
         die(f"LongCat-Video not found at {VENDOR} — run ./setup.sh first")
     if not WEIGHTS.exists():
         die(f"weights not found at {WEIGHTS} — run ./setup.sh first")
+    if not (WEIGHTS_BASE / "text_encoder").exists():
+        die(f"base model components not found at {WEIGHTS_BASE} "
+            f"(tokenizer/text_encoder/vae) — re-run ./setup.sh to fetch them")
     if not args.image.is_file():
         die(f"image not found: {args.image}")
     if not args.audio.is_file():
