@@ -103,6 +103,50 @@ Notes:
 - First run is slower (model load + CUDA warmup); subsequent runs reuse the
   OS page cache but still reload the model each invocation.
 
+## Acknowledgements
+
+talker is a thin CLI + memory-surgery layer; the model doing the actual work
+is **[LongCat-Video-Avatar 1.5](https://github.com/meituan-longcat/LongCat-Video)**
+by the Meituan LongCat Team (code and weights MIT-licensed — thank you for
+releasing them openly). The
+[Avatar 1.5 weights](https://huggingface.co/meituan-longcat/LongCat-Video-Avatar-1.5)
+and base-model components are downloaded from their Hugging Face repos at
+setup time; `vendor/LongCat-Video` is an unmodified checkout of their code
+(all low-memory adaptations live in `talker_infer.py` as runtime patches).
+
+Also standing on: [flash-attention](https://github.com/Dao-AILab/flash-attention)
+(Tri Dao et al.), [Whisper](https://github.com/openai/whisper) large-v3 as the
+audio encoder, the Wan-family VAE, 🤗 accelerate/transformers/diffusers, and
+[audio-separator](https://github.com/nomadkaraoke/python-audio-separator)
+with the Kim_Vocal_2 model for vocal isolation.
+
+## Citation
+
+If you use output from this tool in published work, cite the underlying
+models:
+
+```bibtex
+@misc{meituanlongcatteam2025longcatvideotechnicalreport,
+      title={LongCat-Video Technical Report},
+      author={Meituan LongCat Team and Xunliang Cai and Qilong Huang and Zhuoliang Kang and Hongyu Li and Shijun Liang and Liya Ma and Siyu Ren and Xiaoming Wei and Rixu Xie and Tong Zhang},
+      year={2025},
+      eprint={2510.22200},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2510.22200},
+}
+
+@misc{meituanlongcatteam2026longcatvideoavatar15technicalreport,
+      title={LongCat-Video-Avatar 1.5 Technical Report},
+      author={Meituan LongCat Team and Xunliang Cai and Meng Cheng and Feng Gao and Zhe Kong and Jiamu Li and Le Li and Weiheng Li and Hongyu Liu and Shuai Tan and Xiaoming Wei and Tianyu Yang and Yong Zhang},
+      year={2026},
+      eprint={2605.26486},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2605.26486},
+}
+```
+
 ## Layout
 
 ```
