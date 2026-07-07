@@ -18,6 +18,11 @@ The last line printed on stdout is the output path (default
 - Avatar 1.5 generates at **25 fps**. 25 fps = 40 ms/frame = **4 centiseconds**,
   and GIF frame delays are stored in centiseconds — so the gif timing is
   *exact*, with zero cumulative drift against your audio track.
+- `--fps` resampling keeps that guarantee: ffmpeg rounds *absolute*
+  timestamps, not per-frame deltas, so even a non-centisecond rate like
+  30 fps gifs get alternating 3cs/4cs delays that never accumulate error.
+  Rates dividing 100 (10/20/25/50) are per-frame exact; avoid >50 fps gifs
+  (1cs delays get clamped to 10cs by many players — use mp4 there).
 - Both formats are trimmed to the input audio's exact duration; mp4 gets the
   **original** audio muxed back in (video re-encoded to editor-friendly
   h264/yuv420p, `-crf 16`).
@@ -69,6 +74,10 @@ talker {gif|mp4} <image> <audio> [options]
   --resolution {480p,720p}   default 480p
   --no-int8             full-precision DiT (more VRAM, marginally better)
   --steps N             override inference steps (default: distilled 8-step)
+  --fps RATE            resample to your editor's timeline rate: 30, 60,
+                        24, or exact NTSC 30000/1001 (default: native 25)
+  --smooth              motion-interpolate the --fps resample instead of
+                        duplicating frames (smoother 25->30/60, slower)
   --gif-width W         downscale the gif to width W (default: native)
   --keep-workdir        keep the temp dir with the raw model output
 ```

@@ -118,14 +118,27 @@ def run_inference(image: Path, audio: Path, prompt: str, resolution: str,
     return videos[-1]
 
 
-def finalize_mp4(gen: Path, audio: Path, dur: float, out: Path):
+def fps_filter(fps: Fraction, smooth: bool) -> str:
+    if smooth:
+        # Motion-compensated interpolation: synthesizes in-between frames
+        # instead of duplicating — much smoother for e.g. 25 -> 30/60,
+        # noticeably slower to encode.
+        return (f"minterpolate=fps={fps}:mi_mode=mci:mc_mode=aobmc:"
+                f"me_mode=bidir:vsbmc=1")
+    return f"fps={fps}"
+
+
+def finalize_mp4(gen: Path, audio: Path, dur: float, out: Path,
+                 fps: Fraction | None, smooth: bool):
     # Re-encode so we can trim to the exact audio duration (stream-copy cuts
     # only on keyframes), mux the ORIGINAL audio back in, and end up with an
     # editor-friendly h264/yuv420p file.
+    vf = ["-vf", fps_filter(fps, smooth)] if fps else []
     subprocess.run([
         "ffmpeg", "-y", "-v", "warning", "-stats",
         "-i", str(gen), "-i", str(audio),
         "-map", "0:v:0", "-map", "1:a:0",
+        *vf,
         "-c:v", "libx264", "-crf", "16", "-preset", "slow",
         "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "192k",
@@ -135,17 +148,29 @@ def finalize_mp4(gen: Path, audio: Path, dur: float, out: Path):
     ], check=True)
 
 
-def finalize_gif(gen: Path, dur: float, out: Path, width: int | None) -> Fraction:
-    fps = video_fps(gen)
-    # GIF frame delays are in centiseconds. Warn if the model fps doesn't
-    # land on an exact centisecond boundary (25 fps -> 4 cs, always exact).
+def finalize_gif(gen: Path, dur: float, out: Path, width: int | None,
+                 fps_arg: Fraction | None, smooth: bool) -> Fraction:
+    fps = fps_arg or video_fps(gen)
+    # GIF frame delays are stored in whole centiseconds. fps that divides 100
+    # (10, 20, 25, 50) is exact per frame; anything else gets alternating
+    # delays (e.g. 30 fps -> 3cs/4cs) — ffmpeg rounds absolute timestamps,
+    # not deltas, so there is still ZERO cumulative drift, just per-frame
+    # jitter of up to half a centisecond.
     frame_cs = Fraction(100) / fps
     if frame_cs.denominator != 1:
-        info(f"warning: source fps {fps} is not centisecond-exact in GIF "
-             f"timing; resampling to 25 fps to guarantee sync")
-        fps = Fraction(25)
+        if fps_arg:
+            info(f"note: {fps} fps is not centisecond-exact in GIF timing — "
+                 f"frame delays will alternate around {float(frame_cs):.2f}cs "
+                 f"(no cumulative drift; 10/20/25/50 fps are exact)")
+        else:
+            info(f"warning: source fps {fps} is not centisecond-exact in GIF "
+                 f"timing; resampling to 25 fps to guarantee sync")
+            fps = Fraction(25)
+    if fps > 50:
+        info("warning: >50 fps means GIF frame delays of 1cs, which many "
+             "players clamp to 10cs (slideshow!) — mp4 is safer here")
     scale = f"scale={width}:-2:flags=lanczos," if width else ""
-    vf = (f"fps={fps},{scale}"
+    vf = (f"{fps_filter(fps, smooth)},{scale}"
           f"split[a][b];[a]palettegen=stat_mode=diff[p];"
           f"[b][p]paletteuse=dither=sierra2_4a")
     subprocess.run([
@@ -192,6 +217,13 @@ def main():
                     help="run full-precision DiT (needs more VRAM)")
     ap.add_argument("--steps", type=int, default=None,
                     help="override inference steps (default: distilled 8)")
+    ap.add_argument("--fps", type=Fraction, default=None, metavar="RATE",
+                    help="resample output to this frame rate to match your "
+                         "editor timeline, e.g. 30, 60, or exact NTSC "
+                         "30000/1001 (default: model-native 25)")
+    ap.add_argument("--smooth", action="store_true",
+                    help="motion-interpolate when resampling --fps instead "
+                         "of duplicating frames (smoother, slower)")
     ap.add_argument("--gif-width", type=int, default=None,
                     help="downscale gif to this width (default: native)")
     ap.add_argument("--keep-workdir", action="store_true",
@@ -209,6 +241,12 @@ def main():
     if not args.audio.is_file():
         die(f"audio not found: {args.audio}")
 
+    if args.fps is not None and args.fps <= 0:
+        die("--fps must be positive")
+    if args.smooth and not args.fps:
+        info("--smooth has no effect without --fps; ignoring")
+        args.smooth = False
+
     image = args.image.resolve()
     audio = args.audio.resolve()
     out = (args.output or Path(f"{args.audio.stem}.{args.format}")).resolve()
@@ -221,10 +259,11 @@ def main():
                             not args.no_int8, args.steps, workdir)
         info(f"raw model output: {gen}")
         if args.format == "mp4":
-            finalize_mp4(gen, audio, dur, out)
+            finalize_mp4(gen, audio, dur, out, args.fps, args.smooth)
             verify(out, dur)
         else:
-            gif_fps = finalize_gif(gen, dur, out, args.gif_width)
+            gif_fps = finalize_gif(gen, dur, out, args.gif_width,
+                                   args.fps, args.smooth)
             verify(out, dur, gif_fps)
     finally:
         if args.keep_workdir:
