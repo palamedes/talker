@@ -272,13 +272,16 @@ def _patched_to(self, device):
                   f"(GPU budget {budget_gb:.1f} GiB, blocks: {no_split})")
             self.dit = dispatch_model(self.dit, device_map=device_map,
                                       offload_buffers=True)
-            # The root hook defaults to io_same_device=True, which force-
-            # moves ALL outputs back to the GPU — including the ~8 GB KV
-            # cache dict that the pipeline deliberately keeps on CPU
-            # (offload_kv_cache). Compute already happens on the GPU, so
-            # output relocation buys nothing; disable it.
-            if hasattr(self.dit, "_hf_hook"):
-                self.dit._hf_hook.io_same_device = False
+            # Remove the ROOT hook: it force-moves all inputs (pre_forward)
+            # and outputs (post_forward) to the GPU — including the ~8 GB
+            # KV cache dict the pipeline deliberately keeps on CPU
+            # (offload_kv_cache). The pipeline already places every tensor
+            # correctly, and each BLOCK's own hook still aligns its inputs,
+            # so per-block weight streaming and per-block KV pull-up
+            # (~160 MB transient) keep working. Only the whole-tree
+            # relocation goes away.
+            from accelerate.hooks import remove_hook_from_module
+            remove_hook_from_module(self.dit, recurse=False)
         else:
             self.dit = self.dit.to(device, non_blocking=True)
         if hasattr(self.dit, "lora_dict") and self.dit.lora_dict:
