@@ -2,6 +2,7 @@
 vendor/
 weights/
 outputs/
+output/
 __pycache__/
 *.gif
 *.mp4

@@ -69,7 +69,13 @@ resume where they left off if interrupted.
 # preprocessing pass, it has nothing to separate and just wastes time.
 ./talker mp4 me.png voice.wav --fps ntsc --no-vocal-sep
 
-# Steer the scene. The prompt controls framing, gesture, and background.
+# Dial the acting. Default is "calm" (news-anchor stillness); the model
+# left to its own devices tends to overact.
+./talker mp4 me.png voice.wav --style natural
+./talker mp4 me.png voice.wav --style lively
+
+# Or steer the whole scene yourself. A custom prompt overrides --style and
+# controls framing, gesture, and background.
 ./talker mp4 me.png intro.wav --prompt \
   "A man speaks warmly to camera in a sunlit office, subtle hand gestures."
 
@@ -142,9 +148,10 @@ points, starting with needing ~54 GB of system RAM just to load the model.
 ```
 talker {gif|mp4} <image> <audio> [options]
 
-  -o, --output PATH     output file (default: <audio-stem>.<format>)
-  --prompt TEXT         scene and motion description (default: neutral
-                        talking head, static background)
+  -o, --output PATH     output file (default: output/<audio-stem>.<format>)
+  --style PRESET        acting intensity: calm (default), natural, lively
+  --prompt TEXT         custom scene and motion description; overrides
+                        --style entirely
   --resolution {480p,720p}   default 480p
   --fps RATE            resample to your timeline rate: 30, 60, a fraction
                         like 30000/1001, or an alias: ntsc (29.97),

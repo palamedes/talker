@@ -63,10 +63,26 @@ def parse_fps(s: str) -> Fraction:
     return FPS_ALIASES.get(s.lower()) or Fraction(s)
 
 
-DEFAULT_PROMPT = (
-    "A person looks directly at the camera and speaks naturally, with subtle "
-    "head movement and natural facial expressions. The background stays static."
-)
+# Acting intensity presets. The model tends toward stage-actor energy;
+# "calm" reins it in and is the default. --prompt overrides entirely.
+STYLE_PROMPTS = {
+    "calm": (
+        "A person sits nearly still and speaks calmly and directly to the "
+        "camera, like a news anchor. Very subtle head movement, relaxed "
+        "neutral expression, natural blinking. No hand gestures, shoulders "
+        "steady. Static camera, plain static background."
+    ),
+    "natural": (
+        "A person looks directly at the camera and speaks naturally, with "
+        "subtle head movement and natural facial expressions. The background "
+        "stays static."
+    ),
+    "lively": (
+        "A person speaks to the camera with warm energy and expressive, "
+        "animated delivery, natural head movement and occasional gestures. "
+        "Static camera, static background."
+    ),
+}
 
 
 def die(msg: str, code: int = 1):
@@ -276,9 +292,11 @@ def main():
     ap.add_argument("image", type=Path, help="portrait image (png/jpg)")
     ap.add_argument("audio", type=Path, help="speech audio (wav/mp3/...)")
     ap.add_argument("-o", "--output", type=Path,
-                    help="output path (default: <audio-stem>.<format>)")
-    ap.add_argument("--prompt", default=DEFAULT_PROMPT,
-                    help="scene/motion prompt fed to the model")
+                    help="output path (default: output/<audio-stem>.<format>)")
+    ap.add_argument("--style", choices=sorted(STYLE_PROMPTS), default="calm",
+                    help="acting intensity preset (default: calm)")
+    ap.add_argument("--prompt", default=None,
+                    help="custom scene/motion prompt (overrides --style)")
     ap.add_argument("--resolution", choices=["480p", "720p"], default="480p")
     ap.add_argument("--no-int8", action="store_true",
                     help="run full-precision DiT (needs more VRAM)")
@@ -328,14 +346,17 @@ def main():
 
     image = args.image.resolve()
     audio = args.audio.resolve()
-    out = (args.output or Path(f"{args.audio.stem}.{args.format}")).resolve()
+    out = (args.output
+           or Path("output") / f"{args.audio.stem}.{args.format}").resolve()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    prompt = args.prompt or STYLE_PROMPTS[args.style]
     dur = audio_duration(audio)
     info(f"audio duration: {dur:.3f}s")
 
     workdir = Path(tempfile.mkdtemp(prefix="talker-"))
     ok = False
     try:
-        gen = run_inference(image, audio, dur, args.prompt, args.resolution,
+        gen = run_inference(image, audio, dur, prompt, args.resolution,
                             not args.no_int8, args.steps, args.no_vocal_sep,
                             workdir)
         info(f"raw model output: {gen}")
@@ -354,6 +375,9 @@ def main():
             info(f"workdir kept: {workdir}")
         else:
             shutil.rmtree(workdir, ignore_errors=True)
+        # The vocal separator writes stem wavs under vendor/ and crashed
+        # runs can strand them; tidy up either way.
+        shutil.rmtree(VENDOR / "audio_temp_file", ignore_errors=True)
 
     print(out)
 
