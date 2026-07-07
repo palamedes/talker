@@ -26,19 +26,37 @@ The last line printed on stdout is the output path (default
 
 ## Setup (one time)
 
-Needs an NVIDIA GPU (CUDA 12.4 driver), python 3.10/3.11, ffmpeg, git, and
-roughly 30 GB of disk. INT8 + 480p should fit on a 24 GB card (4090-class);
-720p and/or `--no-int8` want more.
+Needs an NVIDIA GPU + driver, ffmpeg, git, ~30 GB of disk, and either
+python 3.10/3.11 on PATH **or [`uv`](https://docs.astral.sh/uv/)** (setup will
+then provision a private python 3.11 for the venv — your system python
+version doesn't matter). Python 3.13+ cannot work: LongCat pins
+`numpy==1.26.4` / `transformers==4.41.0`, which top out at 3.12.
 
 ```sh
 ./setup.sh
 ```
 
-This creates `.venv/`, clones LongCat-Video into `vendor/`, installs
-torch 2.6 (cu124) + flash-attn + the repo requirements, and downloads the
+This creates `.venv/`, clones LongCat-Video into `vendor/`, installs the
+GPU-appropriate torch + a **runtime-verified** flash-attn, the repo
+requirements (with upstream's stale torch/flash-attn pins filtered out), and
+downloads the
 [Avatar-1.5 weights](https://huggingface.co/meituan-longcat/LongCat-Video-Avatar-1.5)
-into `weights/`. All three dirs are gitignored. The weight download resumes
-if interrupted; re-running `setup.sh` is safe and skips finished steps.
+into `weights/`. Everything is gitignored, downloads resume, and re-running
+is safe — finished steps are skipped.
+
+GPU notes:
+
+- **RTX 50-series (Blackwell, sm_120)** is auto-detected: setup installs
+  torch 2.7.1/cu128 instead of the upstream 2.6/cu124 (which has no Blackwell
+  kernels), and if the prebuilt flash-attn wheel fails its runtime check it
+  compiles flash-attn from source for sm_120 (needs `nvcc` from the CUDA
+  toolkit; 10–30 min, one time). LongCat has no sdpa fallback — flash-attn
+  must actually work, which is why setup executes a real attention op on
+  your GPU to verify it.
+- **VRAM**: talker defaults to int8 + 480p + expandable CUDA segments.
+  Comfortable on 24 GB; 16 GB (5070 Ti-class) is borderline — try it, and if
+  it OOMs, open an issue/report back (block-swap offloading is the next lever).
+  720p and `--no-int8` want more than 16 GB.
 
 ## Usage
 

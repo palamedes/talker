@@ -101,10 +101,14 @@ def run_inference(image: Path, audio: Path, prompt: str, resolution: str,
     if steps is not None:
         cmd += ["--num_inference_steps", str(steps)]
 
+    env = os.environ.copy()
+    # Reduces fragmentation OOMs on VRAM-tight cards (e.g. 16 GB).
+    env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
     info(f"running LongCat inference ({resolution}, "
          f"{'int8' if use_int8 else 'bf16'}, distilled)...")
     info("  " + " ".join(cmd))
-    proc = subprocess.run(cmd, cwd=VENDOR)
+    proc = subprocess.run(cmd, cwd=VENDOR, env=env)
     if proc.returncode != 0:
         die(f"inference failed (exit {proc.returncode})")
 
