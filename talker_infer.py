@@ -240,7 +240,7 @@ def _patched_to(self, device):
             # LoRA (~1.3 GB), VAE weights + its conv activations (~2.5 GB
             # peak while encoding/decoding), DiT step activations (~1.5 GB),
             # and whatever the desktop holds.
-            reserve_gb = float(os.environ.get("TALKER_VRAM_RESERVE_GB", "5.5"))
+            reserve_gb = float(os.environ.get("TALKER_VRAM_RESERVE_GB", "6.5"))
             total_gb = torch.cuda.get_device_properties(exec_device).total_memory / 2**30
             budget_gb = max(2.0, total_gb - reserve_gb)
             no_split = sorted({
@@ -272,6 +272,35 @@ def _patched_to(self, device):
 
 
 pl.LongCatVideoAvatarPipeline.to = _patched_to
+
+
+# --------------------------------------------------------------------------
+# 4b. Memory-lean LoRA forward: upstream materializes total_lora_output and
+#     then `org_output + total_lora_output` — two extra full-size copies of
+#     the projection output (~1 GB each for qkv over a 93-frame latent).
+#     Accumulate into org_output in-place instead (safe: fresh tensor,
+#     inference is under @torch.no_grad()).
+# --------------------------------------------------------------------------
+
+from longcat_video.modules.avatar.longcat_video_dit_avatar import (
+    LongCatVideoAvatarTransformer3DModel as _DiTClass,
+)
+
+
+def _lean_create_multi_lora_forward(self, module, loras):
+    def multi_lora_forward(x, *args, **kwargs):
+        weight_dtype = x.dtype
+        org_output = module.org_forward(x, *args, **kwargs)
+        for lora in loras:
+            if lora.use_lora:
+                lx = lora.lora_down(x.to(lora.lora_down.weight.dtype))
+                lx = lora.lora_up(lx)
+                org_output += lx.to(weight_dtype) * (lora.multiplier * lora.alpha_scale)
+        return org_output
+    return multi_lora_forward
+
+
+_DiTClass._create_multi_lora_forward = _lean_create_multi_lora_forward
 
 
 # --------------------------------------------------------------------------
