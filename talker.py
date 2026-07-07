@@ -124,6 +124,8 @@ def run_inference(image: Path, audio: Path, prompt: str, resolution: str,
 
     env = os.environ.copy()
     # Reduces fragmentation OOMs on VRAM-tight cards (e.g. 16 GB).
+    # (torch >= 2.9 renamed the variable; set both, old name wins if user set it)
+    env.setdefault("PYTORCH_ALLOC_CONF", "expandable_segments:True")
     env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
     info(f"running LongCat inference ({resolution}, "

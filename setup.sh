@@ -153,12 +153,15 @@ step "Installing LongCat requirements (broken/conflicting pins filtered out)"
 #     is dubious and only their server-deployment path would want it
 #   sympy — torch 2.6's exact pin; conflicts with newer torch, which
 #     installs the sympy version it actually requires
+#   onnxruntime — the pinned 1.16.3 ships a .so flagged as needing an
+#     executable stack, which glibc >= 2.41 (Arch/CachyOS) refuses to load
+#     ("cannot enable executable stack"); we install a current build below
 filter_reqs() {
-    grep -vE '^\s*(torch|torchvision|torchaudio|flash[-_]attn|libsndfile1|tritonserverclient|sympy)\s*([=<>!~]|$)' "$1"
+    grep -vE '^\s*(torch|torchvision|torchaudio|flash[-_]attn|libsndfile1|tritonserverclient|sympy|onnxruntime)\s*([=<>!~]|$)' "$1"
 }
 filter_reqs "$VENDOR/requirements.txt"        | pip install -r /dev/stdin
 filter_reqs "$VENDOR/requirements_avatar.txt" | pip install -r /dev/stdin
-pip install librosa "huggingface_hub[cli]"
+pip install librosa "huggingface_hub[cli]" onnxruntime
 
 step "Downloading Avatar-1.5 weights (large; resumes if interrupted)"
 if [[ ! -e "$WEIGHTS/.download-complete" ]]; then
