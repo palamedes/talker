@@ -18,6 +18,7 @@ Pipeline:
 
 import argparse
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -31,7 +32,15 @@ VENDOR = ROOT / "vendor" / "LongCat-Video"
 WEIGHTS = ROOT / "weights" / "LongCat-Video-Avatar-1.5"
 # The avatar pipeline loads tokenizer/text_encoder/vae from <WEIGHTS>/../LongCat-Video
 WEIGHTS_BASE = ROOT / "weights" / "LongCat-Video"
-INFER_SCRIPT = "run_demo_avatar_single_audio_to_video.py"
+# Our low-memory driver wrapping the upstream demo (see talker_infer.py).
+INFER_SCRIPT = ROOT / "talker_infer.py"
+
+# Generation geometry for avatar-v1.5 (from the upstream demo): the first
+# segment yields 93 frames at 25 fps, each further segment appends
+# 93 - 13 = 80 new frames (13 are conditioning overlap).
+GEN_FPS = 25
+SEG_FRAMES = 93
+SEG_NEW_FRAMES = 80
 
 # Editors that say "29.97" / "23.976" / "59.94" mean these exact ratios.
 FPS_ALIASES = {
@@ -97,8 +106,17 @@ def video_fps(path: Path) -> Fraction:
     return Fraction(val)
 
 
-def run_inference(image: Path, audio: Path, prompt: str, resolution: str,
-                  use_int8: bool, steps: int | None, workdir: Path) -> Path:
+def segments_for(dur: float) -> int:
+    """Segments needed to cover `dur` seconds of audio at 25 fps."""
+    frames_needed = math.ceil(dur * GEN_FPS)
+    if frames_needed <= SEG_FRAMES:
+        return 1
+    return 1 + math.ceil((frames_needed - SEG_FRAMES) / SEG_NEW_FRAMES)
+
+
+def run_inference(image: Path, audio: Path, dur: float, prompt: str,
+                  resolution: str, use_int8: bool, steps: int | None,
+                  workdir: Path) -> Path:
     input_json = workdir / "input.json"
     outdir = workdir / "out"
     outdir.mkdir()
@@ -108,9 +126,14 @@ def run_inference(image: Path, audio: Path, prompt: str, resolution: str,
         "cond_audio": {"person1": str(audio)},
     }, indent=2))
 
+    num_segments = segments_for(dur)
+    info(f"{num_segments} segment(s) to cover {dur:.1f}s "
+         f"({SEG_FRAMES} + {num_segments - 1}x{SEG_NEW_FRAMES} frames @ {GEN_FPS} fps)")
+
     cmd = [
-        "torchrun", "--nproc_per_node=1", INFER_SCRIPT,
+        "torchrun", "--nproc_per_node=1", str(INFER_SCRIPT),
         "--context_parallel_size=1",
+        f"--num_segments={num_segments}",
         f"--checkpoint_dir={WEIGHTS}",
         "--stage_1=ai2v",
         f"--input_json={input_json}",
@@ -258,7 +281,7 @@ def main():
 
     for binary in ("ffmpeg", "ffprobe", "torchrun"):
         need(binary)
-    if not (VENDOR / INFER_SCRIPT).exists():
+    if not (VENDOR / "run_demo_avatar_single_audio_to_video.py").exists():
         die(f"LongCat-Video not found at {VENDOR} — run ./setup.sh first")
     if not WEIGHTS.exists():
         die(f"weights not found at {WEIGHTS} — run ./setup.sh first")
@@ -289,7 +312,7 @@ def main():
 
     workdir = Path(tempfile.mkdtemp(prefix="talker-"))
     try:
-        gen = run_inference(image, audio, args.prompt, args.resolution,
+        gen = run_inference(image, audio, dur, args.prompt, args.resolution,
                             not args.no_int8, args.steps, workdir)
         info(f"raw model output: {gen}")
         if args.format == "mp4":
