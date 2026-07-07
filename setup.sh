@@ -161,7 +161,9 @@ filter_reqs() {
 }
 filter_reqs "$VENDOR/requirements.txt"        | pip install -r /dev/stdin
 filter_reqs "$VENDOR/requirements_avatar.txt" | pip install -r /dev/stdin
-pip install librosa "huggingface_hub[cli]" onnxruntime
+pip install librosa "huggingface_hub[cli]"
+# -U matters: repairs venvs that already have the broken 1.16.3 installed
+pip install -U onnxruntime
 
 step "Downloading Avatar-1.5 weights (large; resumes if interrupted)"
 if [[ ! -e "$WEIGHTS/.download-complete" ]]; then
