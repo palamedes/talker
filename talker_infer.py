@@ -236,7 +236,11 @@ def _patched_to(self, device):
             # and stream through the GPU each forward pass (a few GB over
             # PCIe per step — cheap next to the step itself).
             from accelerate import dispatch_model, infer_auto_device_map
-            reserve_gb = float(os.environ.get("TALKER_VRAM_RESERVE_GB", "4"))
+            # Reserve covers what lives outside the device-map budget:
+            # LoRA (~1.3 GB), VAE weights + its conv activations (~2.5 GB
+            # peak while encoding/decoding), DiT step activations (~1.5 GB),
+            # and whatever the desktop holds.
+            reserve_gb = float(os.environ.get("TALKER_VRAM_RESERVE_GB", "5.5"))
             total_gb = torch.cuda.get_device_properties(exec_device).total_memory / 2**30
             budget_gb = max(2.0, total_gb - reserve_gb)
             no_split = sorted({
