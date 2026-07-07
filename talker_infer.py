@@ -220,21 +220,71 @@ pl.LongCatVideoAvatarPipeline.get_audio_embedding = _patched_get_audio_embedding
 # 4. pipe.to(): move only DiT (+ LoRAs) and VAE to the GPU
 # --------------------------------------------------------------------------
 
+def _lowvram() -> bool:
+    return os.environ.get("TALKER_LOWVRAM") == "1"
+
+
 def _patched_to(self, device):
     self.device = device
+    exec_device = (torch.device(f"cuda:{device}") if isinstance(device, int)
+                   else torch.device(device))
     if self.dit is not None:
-        self.dit = self.dit.to(device, non_blocking=True)
+        if _lowvram():
+            # The int8 DiT (~14.3 GB with LoRA) does not fit a 16 GB card
+            # once activations/VAE/desktop are accounted for. Keep as many
+            # blocks resident as the budget allows; the rest stay in RAM
+            # and stream through the GPU each forward pass (a few GB over
+            # PCIe per step — cheap next to the step itself).
+            from accelerate import dispatch_model, infer_auto_device_map
+            reserve_gb = float(os.environ.get("TALKER_VRAM_RESERVE_GB", "4"))
+            total_gb = torch.cuda.get_device_properties(exec_device).total_memory / 2**30
+            budget_gb = max(2.0, total_gb - reserve_gb)
+            no_split = sorted({
+                type(mod[0]).__name__
+                for _, mod in self.dit.named_children()
+                if isinstance(mod, nn.ModuleList) and len(mod) > 1
+            })
+            device_map = infer_auto_device_map(
+                self.dit,
+                max_memory={exec_device.index or 0: f"{budget_gb:.1f}GiB",
+                            "cpu": "1000GiB"},
+                no_split_module_classes=no_split or None)
+            n_cpu = sum(1 for v in device_map.values() if str(v) == "cpu")
+            print(f"[talker] low-VRAM mode: {n_cpu}/{len(device_map)} DiT "
+                  f"submodules stream from RAM "
+                  f"(GPU budget {budget_gb:.1f} GiB, blocks: {no_split})")
+            self.dit = dispatch_model(self.dit, device_map=device_map,
+                                      offload_buffers=True)
+        else:
+            self.dit = self.dit.to(device, non_blocking=True)
         if hasattr(self.dit, "lora_dict") and self.dit.lora_dict:
             for lora_network in self.dit.lora_dict.values():
                 for lora in lora_network.loras:
-                    lora.to(device, non_blocking=True)
+                    lora.to(exec_device, non_blocking=True)
     if self.vae is not None:
-        self.vae = self.vae.to(device, non_blocking=True)
+        self.vae = self.vae.to(exec_device, non_blocking=True)
     # text_encoder: lazy CPU stub (patch 2); audio_encoder: CPU (patch 3)
     return self
 
 
 pl.LongCatVideoAvatarPipeline.to = _patched_to
+
+
+# --------------------------------------------------------------------------
+# 5. Low-VRAM: keep the segment-continuation KV cache in RAM, not VRAM
+#    (upstream hardcodes offload_kv_cache=False)
+# --------------------------------------------------------------------------
+
+_orig_generate_avc = pl.LongCatVideoAvatarPipeline.generate_avc
+
+
+def _patched_generate_avc(self, *args, **kwargs):
+    if _lowvram():
+        kwargs["offload_kv_cache"] = True
+    return _orig_generate_avc(self, *args, **kwargs)
+
+
+pl.LongCatVideoAvatarPipeline.generate_avc = _patched_generate_avc
 
 
 if __name__ == "__main__":

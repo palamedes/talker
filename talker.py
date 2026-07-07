@@ -153,6 +153,22 @@ def run_inference(image: Path, audio: Path, dur: float, prompt: str,
     env.setdefault("PYTORCH_ALLOC_CONF", "expandable_segments:True")
     env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
+    # The int8 DiT alone is ~14.3 GB; below ~20 GB VRAM it must partially
+    # stream from RAM (see talker_infer.py). Auto-detect, allow override.
+    if "TALKER_LOWVRAM" not in env:
+        try:
+            vram_mib = int(subprocess.run(
+                ["nvidia-smi", "--query-gpu=memory.total",
+                 "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, check=True,
+            ).stdout.split()[0])
+            if vram_mib < 20000:
+                env["TALKER_LOWVRAM"] = "1"
+                info(f"GPU has {vram_mib} MiB VRAM -> low-VRAM mode "
+                     f"(DiT partially streams from RAM)")
+        except (subprocess.CalledProcessError, FileNotFoundError, ValueError, IndexError):
+            pass
+
     info(f"running LongCat inference ({resolution}, "
          f"{'int8' if use_int8 else 'bf16'}, distilled)...")
     info("  " + " ".join(cmd))
