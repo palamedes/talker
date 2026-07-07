@@ -351,20 +351,22 @@ def _restore_dit():
     _gpu_stash.clear()
 
 
-_orig_vae_decode = _VAEClass.decode
+def _wrap_vae_op(orig):
+    def wrapped(self, x, *args, **kwargs):
+        if not _lowvram():
+            return orig(self, x, *args, **kwargs)
+        _evict_dit()
+        try:
+            return orig(self, x, *args, **kwargs)
+        finally:
+            _restore_dit()
+    return wrapped
 
 
-def _patched_vae_decode(self, z, *args, **kwargs):
-    if not _lowvram():
-        return _orig_vae_decode(self, z, *args, **kwargs)
-    _evict_dit()
-    try:
-        return _orig_vae_decode(self, z, *args, **kwargs)
-    finally:
-        _restore_dit()
-
-
-_VAEClass.decode = _patched_vae_decode
+# Both directions spike the same way: encode() runs per continuation
+# segment on the 13 conditioning frames, decode() on every segment.
+_VAEClass.decode = _wrap_vae_op(_VAEClass.decode)
+_VAEClass.encode = _wrap_vae_op(_VAEClass.encode)
 
 
 # --------------------------------------------------------------------------
