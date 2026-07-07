@@ -143,10 +143,19 @@ else
     echo "already cloned: $VENDOR"
 fi
 
-step "Installing LongCat requirements (torch/flash-attn pins filtered out)"
-# Upstream pins torch==2.6.0 and flash-attn — installing those verbatim would
-# clobber the GPU-appropriate builds we just verified. Strip them.
-filter_reqs() { grep -vE '^\s*(torch|torchvision|torchaudio|flash[-_]attn)\b' "$1"; }
+step "Installing LongCat requirements (broken/conflicting pins filtered out)"
+# Filtered lines:
+#   torch/torchvision/torchaudio/flash-attn — upstream pins torch==2.6.0,
+#     which would clobber the GPU-appropriate builds we just verified
+#   libsndfile1 — a Debian SYSTEM package name pasted into a pip file
+#     (upstream bug); the soundfile wheel bundles libsndfile anyway
+#   tritonserverclient — NVIDIA's real package is 'tritonclient'; this name
+#     is dubious and only their server-deployment path would want it
+#   sympy — torch 2.6's exact pin; conflicts with newer torch, which
+#     installs the sympy version it actually requires
+filter_reqs() {
+    grep -vE '^\s*(torch|torchvision|torchaudio|flash[-_]attn|libsndfile1|tritonserverclient|sympy)\s*([=<>!~]|$)' "$1"
+}
 filter_reqs "$VENDOR/requirements.txt"        | pip install -r /dev/stdin
 filter_reqs "$VENDOR/requirements_avatar.txt" | pip install -r /dev/stdin
 pip install librosa "huggingface_hub[cli]"
