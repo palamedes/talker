@@ -96,7 +96,7 @@ are for the int8 model at 480p, the default.
 
 | Tier | VRAM | System RAM | What to expect |
 |---|---|---|---|
-| Floor (tested) | 16 GB (RTX 5070 Ti, 4080, etc.) | 32 GB | Works via automatic low-VRAM mode. Part of the model streams from RAM each step. ~36 s per denoise step, ~5 min per 3.2 s segment. |
+| Floor (tested) | 16 GB (RTX 5070 Ti, 4080, etc.) | 32 GB | Verified end to end. Works via automatic low-VRAM mode; about half the model streams from RAM each step. 36 to 43 s per denoise step, 5 to 6 min per 3.2 s segment. |
 | Comfortable | 24 GB (RTX 3090, 4090) | 32 GB | Whole model stays on the GPU, low-VRAM mode switches itself off. Roughly 1.5 to 2x faster per step on a 4090. |
 | Roomy | 32 to 48 GB | 64 GB | 720p and/or the bf16 model (`--no-int8`) become realistic. This is the hardware the upstream authors appear to have assumed. |
 
@@ -163,9 +163,10 @@ Environment knobs (mostly for small-card tuning):
 
 ```
 TALKER_LOWVRAM=1|0          force low-VRAM mode on/off (auto: on below 20 GB)
-TALKER_VRAM_RESERVE_GB=6.5  VRAM held back for activations; lower keeps more
+TALKER_VRAM_RESERVE_GB=8.5  VRAM held back for activations; lower keeps more
                             model resident (faster) but risks OOM, higher is
-                            safer but streams more
+                            safer but streams more. 8.5 is the measured safe
+                            default for 16 GB cards.
 TALKER_SKIP_VOCAL_SEP=1     same as --no-vocal-sep
 ```
 
