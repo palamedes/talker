@@ -164,7 +164,10 @@ filter_reqs() {
 }
 filter_reqs "$VENDOR/requirements.txt"        | pip install -r /dev/stdin
 filter_reqs "$VENDOR/requirements_avatar.txt" | pip install -r /dev/stdin
-pip install librosa "huggingface_hub[cli]"
+# accelerate: missing from upstream's requirements, but without it
+# transformers loads models with low_cpu_mem_usage=False — the doubled RAM
+# spike during weight loading gets the process OOM-killed (SIGKILL).
+pip install librosa "huggingface_hub[cli]" accelerate
 # -U matters: repairs venvs that already have the broken 1.16.3 installed
 pip install -U onnxruntime
 
