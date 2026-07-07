@@ -287,6 +287,32 @@ def _patched_generate_avc(self, *args, **kwargs):
 pl.LongCatVideoAvatarPipeline.generate_avc = _patched_generate_avc
 
 
+# --------------------------------------------------------------------------
+# 6. Don't re-encode the whole accumulated video after every segment
+#    (upstream does — O(n^2) for long runs). Save every 10th as a
+#    crash checkpoint, plus always the final one.
+# --------------------------------------------------------------------------
+
+_NUM_SEGMENTS = 1
+_orig_save_video = demo.save_video_ffmpeg
+
+
+def _patched_save_video(tensor, path, audio_path, **kwargs):
+    base = os.path.basename(str(path))
+    if _NUM_SEGMENTS > 1:
+        if base.startswith(("ai2v_demo", "at2v_demo")):
+            return None  # segment 1 of many: skip, continuation saves cover it
+        if base.startswith("video_continue_"):
+            idx = int(base.rsplit("_", 1)[1])
+            if idx != _NUM_SEGMENTS and idx % 10 != 0:
+                return None
+    return _orig_save_video(tensor, path, audio_path, **kwargs)
+
+
+demo.save_video_ffmpeg = _patched_save_video
+
+
 if __name__ == "__main__":
     args = demo._parse_args()
+    _NUM_SEGMENTS = max(1, args.num_segments)
     demo.generate(args)

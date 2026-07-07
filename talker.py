@@ -327,6 +327,7 @@ def main():
     info(f"audio duration: {dur:.3f}s")
 
     workdir = Path(tempfile.mkdtemp(prefix="talker-"))
+    ok = False
     try:
         gen = run_inference(image, audio, dur, args.prompt, args.resolution,
                             not args.no_int8, args.steps, workdir)
@@ -338,8 +339,11 @@ def main():
             gif_fps = finalize_gif(gen, dur, out, args.gif_width,
                                    args.fps, args.smooth)
             verify(out, dur, gif_fps)
+        ok = True
     finally:
-        if args.keep_workdir:
+        if args.keep_workdir or not ok:
+            # On failure, keep it — long runs checkpoint partial video
+            # there every 10 segments.
             info(f"workdir kept: {workdir}")
         else:
             shutil.rmtree(workdir, ignore_errors=True)
