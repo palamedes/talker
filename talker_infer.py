@@ -128,6 +128,18 @@ class _LazyTextEncoder:
     def __init__(self, path, subfolder, torch_dtype):
         self.path, self.subfolder = path, subfolder
         self.torch_dtype = torch_dtype or torch.bfloat16
+        self._config = None
+
+    @property
+    def config(self):
+        # The pipeline reads text_encoder.config.d_model (KV-cache setup)
+        # without needing the weights — serve it from the on-disk config.
+        if self._config is None:
+            import json
+            with open(os.path.join(self.path, self.subfolder or "",
+                                   "config.json")) as f:
+                self._config = types.SimpleNamespace(**json.load(f))
+        return self._config
 
     def to(self, *args, **kwargs):  # pipe.to() no-op
         return self
