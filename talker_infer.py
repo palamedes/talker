@@ -253,9 +253,12 @@ def _patched_to(self, device):
             # LoRA (~1.3 GB), DiT step activations (~1.5 GB in segment 1,
             # ~1 GB more in continuation segments where attention runs over
             # current + cached conditioning tokens), per-block KV pull-up,
-            # and whatever the desktop holds. 7.5 is the measured high-water
-            # default for 16 GB cards; lower it for speed at your own risk.
-            reserve_gb = float(os.environ.get("TALKER_VRAM_RESERVE_GB", "7.5"))
+            # streamed-block weights in transit, and the desktop. 8.5 gives
+            # ~2 GB of true margin at the measured continuation-segment
+            # high-water mark on a 16 GB card (13.85 GB at reserve 7.5,
+            # variance-killed at denoise step 6/8). Lower for speed at your
+            # own risk.
+            reserve_gb = float(os.environ.get("TALKER_VRAM_RESERVE_GB", "8.5"))
             total_gb = torch.cuda.get_device_properties(exec_device).total_memory / 2**30
             budget_gb = max(2.0, total_gb - reserve_gb)
             no_split = sorted({
