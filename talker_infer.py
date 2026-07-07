@@ -29,6 +29,7 @@ Upstream problems fixed here, without editing vendor code:
 """
 
 import gc
+import itertools
 import os
 import sys
 import types
@@ -265,6 +266,7 @@ def _patched_to(self, device):
             for lora_network in self.dit.lora_dict.values():
                 for lora in lora_network.loras:
                     lora.to(exec_device, non_blocking=True)
+        _ACTIVE["dit"], _ACTIVE["device"] = self.dit, exec_device
     if self.vae is not None:
         self.vae = self.vae.to(exec_device, non_blocking=True)
     # text_encoder: lazy CPU stub (patch 2); audio_encoder: CPU (patch 3)
@@ -301,6 +303,68 @@ def _lean_create_multi_lora_forward(self, module, loras):
 
 
 _DiTClass._create_multi_lora_forward = _lean_create_multi_lora_forward
+
+
+# --------------------------------------------------------------------------
+# 4e. Evict the DiT to RAM around VAE decode. The decoder spikes ~4 GB in
+#     single conv3d calls even with feat_cache streaming, and the DiT is
+#     idle during decode — swap its resident weights out for those seconds
+#     (~10 GB each way over PCIe, a blip next to a multi-minute segment).
+#     The dispatch hooks are untouched: offloaded modules keep their CPU
+#     weights_map; we only round-trip the .data of cuda-resident tensors.
+# --------------------------------------------------------------------------
+
+from longcat_video.modules.autoencoder_kl_wan import AutoencoderKLWan as _VAEClass
+
+_ACTIVE = {"dit": None, "device": None}
+_gpu_stash = []
+
+
+def _dit_modules(dit):
+    mods = [dit]
+    if hasattr(dit, "lora_dict") and dit.lora_dict:
+        for lora_network in dit.lora_dict.values():
+            mods.extend(lora_network.loras)
+    return mods
+
+
+def _evict_dit():
+    dit = _ACTIVE["dit"]
+    if dit is None or _gpu_stash:
+        return
+    seen = set()
+    for mod in _dit_modules(dit):
+        for t in itertools.chain(mod.parameters(), mod.buffers()):
+            if id(t) in seen:
+                continue
+            seen.add(id(t))
+            if t.device.type == "cuda":
+                _gpu_stash.append(t)
+                t.data = t.data.to("cpu")
+    torch.cuda.empty_cache()
+
+
+def _restore_dit():
+    device = _ACTIVE["device"]
+    for t in _gpu_stash:
+        t.data = t.data.to(device)
+    _gpu_stash.clear()
+
+
+_orig_vae_decode = _VAEClass.decode
+
+
+def _patched_vae_decode(self, z, *args, **kwargs):
+    if not _lowvram():
+        return _orig_vae_decode(self, z, *args, **kwargs)
+    _evict_dit()
+    try:
+        return _orig_vae_decode(self, z, *args, **kwargs)
+    finally:
+        _restore_dit()
+
+
+_VAEClass.decode = _patched_vae_decode
 
 
 # --------------------------------------------------------------------------
