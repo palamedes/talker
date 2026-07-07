@@ -272,6 +272,13 @@ def _patched_to(self, device):
                   f"(GPU budget {budget_gb:.1f} GiB, blocks: {no_split})")
             self.dit = dispatch_model(self.dit, device_map=device_map,
                                       offload_buffers=True)
+            # The root hook defaults to io_same_device=True, which force-
+            # moves ALL outputs back to the GPU — including the ~8 GB KV
+            # cache dict that the pipeline deliberately keeps on CPU
+            # (offload_kv_cache). Compute already happens on the GPU, so
+            # output relocation buys nothing; disable it.
+            if hasattr(self.dit, "_hf_hook"):
+                self.dit._hf_hook.io_same_device = False
         else:
             self.dit = self.dit.to(device, non_blocking=True)
         if hasattr(self.dit, "lora_dict") and self.dit.lora_dict:
