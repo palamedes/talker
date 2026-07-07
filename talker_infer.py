@@ -353,6 +353,36 @@ _rope_mod.RotaryPositionalEmbedding.forward = _chunked_rope3d_forward
 
 
 # --------------------------------------------------------------------------
+# 4d. Chunked SwiGLU FFN: w1/w3 expand each token to ~2x hidden width, so
+#     the one-liner w2(silu(w1(x)) * w3(x)) holds ~3.5 GB of intermediates
+#     for a 37k-token sequence (incl. the LoRA temp that OOMed). The FFN is
+#     pointwise over tokens — process 8k tokens at a time, same numbers.
+# --------------------------------------------------------------------------
+
+import torch.nn.functional as F
+from longcat_video.modules import blocks as _blocks_mod
+
+_orig_ffn_forward = _blocks_mod.FeedForwardSwiGLU.forward
+
+_FFN_CHUNK = 8192
+
+
+def _chunked_ffn_forward(self, x):
+    if not _lowvram() or x.dim() != 3 or x.shape[1] <= _FFN_CHUNK:
+        return _orig_ffn_forward(self, x)
+    out = torch.empty_like(x)
+    for t in range(0, x.shape[1], _FFN_CHUNK):
+        xs = x[:, t:t + _FFN_CHUNK]
+        # self.w1/w2/w3 go through __call__, so LoRA wrappers and the
+        # int8 dequant still apply per chunk.
+        out[:, t:t + _FFN_CHUNK] = self.w2(F.silu(self.w1(xs)) * self.w3(xs))
+    return out
+
+
+_blocks_mod.FeedForwardSwiGLU.forward = _chunked_ffn_forward
+
+
+# --------------------------------------------------------------------------
 # 6. Don't re-encode the whole accumulated video after every segment
 #    (upstream does — O(n^2) for long runs). Save every 10th as a
 #    crash checkpoint, plus always the final one.
