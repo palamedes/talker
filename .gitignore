@@ -1,0 +1,7 @@
+.venv/
+vendor/
+weights/
+outputs/
+__pycache__/
+*.gif
+*.mp4
