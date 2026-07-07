@@ -442,7 +442,7 @@ from longcat_video.modules import blocks as _blocks_mod
 
 _orig_ffn_forward = _blocks_mod.FeedForwardSwiGLU.forward
 
-_FFN_CHUNK = 8192
+_FFN_CHUNK = 16384
 
 
 def _chunked_ffn_forward(self, x):
@@ -458,6 +458,31 @@ def _chunked_ffn_forward(self, x):
 
 
 _blocks_mod.FeedForwardSwiGLU.forward = _chunked_ffn_forward
+
+
+# --------------------------------------------------------------------------
+# 5b. Optional: skip vocal separation (TALKER_SKIP_VOCAL_SEP=1). For clean
+#     speech (TTS / studio VO) there is nothing to separate — Kim_Vocal_2
+#     costs ~15-20s per run for a no-op. NOTE: we copy to the temp target
+#     rather than returning the source, because the demo deletes the
+#     returned path after computing the audio embedding.
+# --------------------------------------------------------------------------
+
+_orig_extract_vocal = demo.extract_vocal_from_speech
+
+
+def _patched_extract_vocal(source_path, target_path, vocal_separator,
+                           audio_output_dir_temp):
+    if os.environ.get("TALKER_SKIP_VOCAL_SEP") == "1":
+        import shutil
+        print("[talker] skipping vocal separation (clean-speech mode)")
+        shutil.copyfile(source_path, target_path)
+        return target_path
+    return _orig_extract_vocal(source_path, target_path, vocal_separator,
+                               audio_output_dir_temp)
+
+
+demo.extract_vocal_from_speech = _patched_extract_vocal
 
 
 # --------------------------------------------------------------------------

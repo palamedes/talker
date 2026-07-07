@@ -116,7 +116,7 @@ def segments_for(dur: float) -> int:
 
 def run_inference(image: Path, audio: Path, dur: float, prompt: str,
                   resolution: str, use_int8: bool, steps: int | None,
-                  workdir: Path) -> Path:
+                  no_vocal_sep: bool, workdir: Path) -> Path:
     input_json = workdir / "input.json"
     outdir = workdir / "out"
     outdir.mkdir()
@@ -152,6 +152,9 @@ def run_inference(image: Path, audio: Path, dur: float, prompt: str,
     # (torch >= 2.9 renamed the variable; set both, old name wins if user set it)
     env.setdefault("PYTORCH_ALLOC_CONF", "expandable_segments:True")
     env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
+    if no_vocal_sep:
+        env["TALKER_SKIP_VOCAL_SEP"] = "1"
 
     # The int8 DiT alone is ~14.3 GB; below ~20 GB VRAM it must partially
     # stream from RAM (see talker_infer.py). Auto-detect, allow override.
@@ -291,6 +294,9 @@ def main():
                          "of duplicating frames (smoother, slower)")
     ap.add_argument("--gif-width", type=int, default=None,
                     help="downscale gif to this width (default: native)")
+    ap.add_argument("--no-vocal-sep", action="store_true",
+                    help="skip vocal separation — use when the audio is "
+                         "clean speech (TTS/VO) with no music to remove")
     ap.add_argument("--keep-workdir", action="store_true",
                     help="keep the temp working dir (raw model output)")
     args = ap.parse_args()
@@ -330,7 +336,8 @@ def main():
     ok = False
     try:
         gen = run_inference(image, audio, dur, args.prompt, args.resolution,
-                            not args.no_int8, args.steps, workdir)
+                            not args.no_int8, args.steps, args.no_vocal_sep,
+                            workdir)
         info(f"raw model output: {gen}")
         if args.format == "mp4":
             finalize_mp4(gen, audio, dur, out, args.fps, args.smooth)
