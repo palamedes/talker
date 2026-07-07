@@ -32,10 +32,40 @@ CAP="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1 | tr -
 CAP_MAJOR="${CAP%%.*}"
 if (( CAP_MAJOR >= 12 )); then
     BLACKWELL=1
-    TORCH_SPEC="torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1"
-    TORCH_INDEX="https://download.pytorch.org/whl/cu128"
+    echo "detected Blackwell GPU (sm_${CAP/./})"
+    # sm_120 needs a source-built flash-attn, and the nvcc that builds it must
+    # match torch's CUDA major version — so locate nvcc FIRST and pick the
+    # torch build to match it.
+    if [[ -z "${CUDA_HOME:-}" ]]; then
+        for d in /opt/cuda /usr/local/cuda; do
+            [[ -x "$d/bin/nvcc" ]] && { CUDA_HOME="$d"; break; }
+        done
+    fi
+    if [[ -z "${CUDA_HOME:-}" ]] && command -v nvcc >/dev/null; then
+        CUDA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v nvcc)")")")"
+    fi
+    [[ -n "${CUDA_HOME:-}" && -x "$CUDA_HOME/bin/nvcc" ]] || fail "CUDA toolkit (nvcc) not found — required to compile flash-attn for sm_120.
+  Install it:   sudo pacman -S cuda      (Arch/CachyOS; lands in /opt/cuda)
+  then re-run ./setup.sh — it will auto-detect it there."
+    export CUDA_HOME
+    export PATH="$CUDA_HOME/bin:$PATH"
+    NVCC_VER="$("$CUDA_HOME/bin/nvcc" --version | grep -oP 'release \K[0-9]+\.[0-9]+')"
+    NVCC_MAJOR="${NVCC_VER%%.*}"
+    NVCC_MINOR="${NVCC_VER#*.}"
+    echo "found nvcc $NVCC_VER at $CUDA_HOME"
+    if (( NVCC_MAJOR == 12 )); then
+        (( NVCC_MINOR >= 8 )) || fail "nvcc $NVCC_VER cannot target sm_120 — need CUDA >= 12.8"
+        TORCH_SPEC="torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1"
+        TORCH_INDEX="https://download.pytorch.org/whl/cu128"
+        echo "-> torch 2.7.1 / cu128 (matches nvcc 12.x)"
+    elif (( NVCC_MAJOR >= 13 )); then
+        TORCH_SPEC="torch==2.9.1 torchvision==0.24.1 torchaudio==2.9.1"
+        TORCH_INDEX="https://download.pytorch.org/whl/cu130"
+        echo "-> torch 2.9.1 / cu130 (matches nvcc ${NVCC_MAJOR}.x)"
+    else
+        fail "unsupported nvcc version $NVCC_VER"
+    fi
     FLASH_ATTN_VER="2.8.3"
-    echo "detected Blackwell GPU (sm_${CAP/./}) -> torch 2.7.1 / cu128"
 else
     BLACKWELL=0
     TORCH_SPEC="torch==2.6.0+cu124 torchvision==0.21.0+cu124 torchaudio==2.6.0"
@@ -87,28 +117,23 @@ torch.cuda.synchronize()
 print("flash-attn runtime check: OK", tuple(out.shape))
 PY
 }
-if ! flash_attn_works 2>/dev/null; then
-    # Try the official prebuilt wheel first (fast).
-    pip install "flash_attn==$FLASH_ATTN_VER" --no-build-isolation || true
-    if ! flash_attn_works; then
-        if (( BLACKWELL )); then
-            echo "prebuilt flash-attn lacks sm_120 kernels — building from source (this is normal for RTX 50-series; takes 10-30 min)"
-            command -v nvcc >/dev/null || fail "nvcc not found — flash-attn must be compiled for sm_120.
-  Install the CUDA toolkit (e.g. pacman -S cuda), ensure nvcc is on PATH, and re-run.
-  Note: nvcc's CUDA major version must match torch's (12.x for this install)."
-            nvcc --version | grep release
-            pip uninstall -y flash-attn flash_attn 2>/dev/null || true
-            FLASH_ATTENTION_FORCE_BUILD=TRUE \
-            FLASH_ATTN_CUDA_ARCHS="120" \
-            MAX_JOBS="$(( $(nproc) < 8 ? $(nproc) : 8 ))" \
-                pip install -v "flash_attn==$FLASH_ATTN_VER" --no-build-isolation
-            flash_attn_works || fail "flash-attn still fails its runtime check after source build"
-        else
-            fail "flash-attn failed its runtime check"
-        fi
-    fi
-else
+if flash_attn_works 2>/dev/null; then
     echo "flash-attn already installed and working"
+elif (( BLACKWELL )); then
+    # Official wheels don't ship sm_120 kernels — build from source for
+    # exactly this arch. One time; 10-30 min depending on CPU.
+    echo "building flash-attn from source for sm_120 (normal for RTX 50-series; 10-30 min)"
+    pip uninstall -y flash-attn flash_attn 2>/dev/null || true
+    FLASH_ATTENTION_FORCE_BUILD=TRUE \
+    FLASH_ATTN_CUDA_ARCHS="120" \
+    MAX_JOBS="$(( $(nproc) < 8 ? $(nproc) : 8 ))" \
+        pip install -v "flash_attn==$FLASH_ATTN_VER" --no-build-isolation
+    flash_attn_works || fail "flash-attn still fails its runtime check after source build"
+else
+    # Non-Blackwell: the prebuilt wheel path works (still needs nvcc present
+    # for pip's metadata step — that's a flash-attn packaging quirk).
+    pip install "flash_attn==$FLASH_ATTN_VER" --no-build-isolation
+    flash_attn_works || fail "flash-attn failed its runtime check"
 fi
 
 step "Cloning LongCat-Video"
