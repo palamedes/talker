@@ -31,6 +31,27 @@ VENDOR = ROOT / "vendor" / "LongCat-Video"
 WEIGHTS = ROOT / "weights" / "LongCat-Video-Avatar-1.5"
 INFER_SCRIPT = "run_demo_avatar_single_audio_to_video.py"
 
+# Editors that say "29.97" / "23.976" / "59.94" mean these exact ratios.
+FPS_ALIASES = {
+    "ntsc": Fraction(30000, 1001),       # 29.97
+    "ntsc-film": Fraction(24000, 1001),  # 23.976
+    "ntsc60": Fraction(60000, 1001),     # 59.94
+    "film": Fraction(24),
+    "pal": Fraction(25),
+}
+
+# Literal decimals users type that are almost certainly meant as NTSC rates.
+FPS_LOOKALIKES = {
+    Fraction("29.97"): "ntsc",
+    Fraction("23.976"): "ntsc-film",
+    Fraction("59.94"): "ntsc60",
+}
+
+
+def parse_fps(s: str) -> Fraction:
+    return FPS_ALIASES.get(s.lower()) or Fraction(s)
+
+
 DEFAULT_PROMPT = (
     "A person looks directly at the camera and speaks naturally, with subtle "
     "head movement and natural facial expressions. The background stays static."
@@ -217,10 +238,11 @@ def main():
                     help="run full-precision DiT (needs more VRAM)")
     ap.add_argument("--steps", type=int, default=None,
                     help="override inference steps (default: distilled 8)")
-    ap.add_argument("--fps", type=Fraction, default=None, metavar="RATE",
+    ap.add_argument("--fps", type=parse_fps, default=None, metavar="RATE",
                     help="resample output to this frame rate to match your "
-                         "editor timeline, e.g. 30, 60, or exact NTSC "
-                         "30000/1001 (default: model-native 25)")
+                         "editor timeline: 30, 60, 30000/1001, or an alias "
+                         "(ntsc=29.97, ntsc-film=23.976, ntsc60=59.94, "
+                         "film=24, pal=25); default: model-native 25")
     ap.add_argument("--smooth", action="store_true",
                     help="motion-interpolate when resampling --fps instead "
                          "of duplicating frames (smoother, slower)")
@@ -243,6 +265,11 @@ def main():
 
     if args.fps is not None and args.fps <= 0:
         die("--fps must be positive")
+    if args.fps in FPS_LOOKALIKES:
+        alias = FPS_LOOKALIKES[args.fps]
+        info(f"note: taking --fps {float(args.fps)} literally; if your editor "
+             f"means NTSC {FPS_ALIASES[alias]}, use --fps {alias} "
+             f"(drift is ~1ms per 17min either way)")
     if args.smooth and not args.fps:
         info("--smooth has no effect without --fps; ignoring")
         args.smooth = False

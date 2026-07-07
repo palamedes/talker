@@ -74,8 +74,10 @@ talker {gif|mp4} <image> <audio> [options]
   --resolution {480p,720p}   default 480p
   --no-int8             full-precision DiT (more VRAM, marginally better)
   --steps N             override inference steps (default: distilled 8-step)
-  --fps RATE            resample to your editor's timeline rate: 30, 60,
-                        24, or exact NTSC 30000/1001 (default: native 25)
+  --fps RATE            resample to your editor's timeline rate: 30, 60, a
+                        fraction like 30000/1001, or an alias — ntsc (29.97),
+                        ntsc-film (23.976), ntsc60 (59.94), film (24),
+                        pal (25). Default: native 25.
   --smooth              motion-interpolate the --fps resample instead of
                         duplicating frames (smoother 25->30/60, slower)
   --gif-width W         downscale the gif to width W (default: native)
