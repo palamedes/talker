@@ -321,6 +321,38 @@ pl.LongCatVideoAvatarPipeline.generate_avc = _patched_generate_avc
 
 
 # --------------------------------------------------------------------------
+# 4c. Chunked 3D-RoPE: upstream upcasts full q/k (40 heads x ~37k tokens)
+#     to fp32 and rotate_half builds several more full-size temporaries —
+#     a ~4-5 GB spike right before flash-attention. RoPE is independent
+#     per head, so apply it 8 heads at a time: same numbers, ~1/5 the
+#     transient memory. (Layout is [B, heads, seq, head_dim]; the freqs
+#     broadcast over the head dim, so slicing it is safe.)
+# --------------------------------------------------------------------------
+
+from longcat_video.modules.avatar import rope_3d as _rope_mod
+
+_orig_rope3d_forward = _rope_mod.RotaryPositionalEmbedding.forward
+
+
+def _chunked_rope3d_forward(self, q, k, grid_size, frame_index=None,
+                            num_ref_latents=None):
+    num_heads = q.shape[1]
+    chunk = 8
+    if not _lowvram() or num_heads <= chunk:
+        return _orig_rope3d_forward(self, q, k, grid_size, frame_index,
+                                    num_ref_latents)
+    q_out, k_out = torch.empty_like(q), torch.empty_like(k)
+    for h in range(0, num_heads, chunk):
+        q_out[:, h:h + chunk], k_out[:, h:h + chunk] = _orig_rope3d_forward(
+            self, q[:, h:h + chunk], k[:, h:h + chunk],
+            grid_size, frame_index, num_ref_latents)
+    return q_out, k_out
+
+
+_rope_mod.RotaryPositionalEmbedding.forward = _chunked_rope3d_forward
+
+
+# --------------------------------------------------------------------------
 # 6. Don't re-encode the whole accumulated video after every segment
 #    (upstream does — O(n^2) for long runs). Save every 10th as a
 #    crash checkpoint, plus always the final one.
