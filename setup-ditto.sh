@@ -54,9 +54,10 @@ fi
 
 step "Downloading Ditto checkpoints (PyTorch + cfg only; skipping TensorRT engines)"
 if [[ ! -e "$WEIGHTS/.download-complete" ]]; then
-    hf download digital-avatar/ditto-talkinghead \
-        --include "ditto_cfg/*" "ditto_pytorch/*" \
-        --local-dir "$WEIGHTS"
+    # one pattern per call: huggingface_hub >= 1.0 misparses a second
+    # pattern after --include as a positional filename
+    hf download digital-avatar/ditto-talkinghead --include "ditto_cfg/*" --local-dir "$WEIGHTS"
+    hf download digital-avatar/ditto-talkinghead --include "ditto_pytorch/*" --local-dir "$WEIGHTS"
     touch "$WEIGHTS/.download-complete"
 else
     echo "already downloaded: $WEIGHTS"

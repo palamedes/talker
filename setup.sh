@@ -183,9 +183,11 @@ step "Downloading base LongCat-Video components (tokenizer/text_encoder/vae only
 # The avatar pipeline borrows these from the base model repo; we deliberately
 # skip the base repo's own 13.6B DiT (~27 GB) — the avatar has its own.
 if [[ ! -e "$WEIGHTS_BASE/.download-complete" ]]; then
-    hf download meituan-longcat/LongCat-Video \
-        --include "tokenizer/*" "text_encoder/*" "vae/*" \
-        --local-dir "$WEIGHTS_BASE"
+    # one pattern per call: huggingface_hub >= 1.0 misparses a second
+    # pattern after --include as a positional filename
+    hf download meituan-longcat/LongCat-Video --include "tokenizer/*" --local-dir "$WEIGHTS_BASE"
+    hf download meituan-longcat/LongCat-Video --include "text_encoder/*" --local-dir "$WEIGHTS_BASE"
+    hf download meituan-longcat/LongCat-Video --include "vae/*" --local-dir "$WEIGHTS_BASE"
     touch "$WEIGHTS_BASE/.download-complete"
 else
     echo "already downloaded: $WEIGHTS_BASE"
