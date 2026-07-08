@@ -65,12 +65,18 @@ def parse_fps(s: str) -> Fraction:
 
 # Acting intensity presets. The model tends toward stage-actor energy;
 # "calm" reins it in and is the default. --prompt overrides entirely.
+# NOTE: in distilled mode the negative prompt is inert (guidance scale is
+# pinned to 1.0, so there is no CFG) — the positive prompt is the ONLY
+# text lever, which is why these lay it on thick.
 STYLE_PROMPTS = {
     "calm": (
-        "A person sits nearly still and speaks calmly and directly to the "
-        "camera, like a news anchor. Very subtle head movement, relaxed "
-        "neutral expression, natural blinking. No hand gestures, shoulders "
-        "steady. Static camera, plain static background."
+        "A person sits completely still and speaks calmly, quietly and "
+        "directly into the camera, like a composed news anchor reading the "
+        "news. The head stays level and nearly motionless, the shoulders "
+        "and body do not move. Relaxed neutral expression, natural blinking, "
+        "only the mouth moves with the speech. The hands stay down, out of "
+        "frame, and are never visible. No gestures. Locked-off static "
+        "camera, plain static background, nothing else moves."
     ),
     "natural": (
         "A person looks directly at the camera and speaks naturally, with "
@@ -297,6 +303,9 @@ def main():
                     help="acting intensity preset (default: calm)")
     ap.add_argument("--prompt", default=None,
                     help="custom scene/motion prompt (overrides --style)")
+    ap.add_argument("--no-hands", action="store_true",
+                    help="append a strong no-hands clause to the prompt "
+                         "(works with --style or --prompt)")
     ap.add_argument("--resolution", choices=["480p", "720p"], default="480p")
     ap.add_argument("--no-int8", action="store_true",
                     help="run full-precision DiT (needs more VRAM)")
@@ -350,6 +359,13 @@ def main():
            or Path("output") / f"{args.audio.stem}.{args.format}").resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
     prompt = args.prompt or STYLE_PROMPTS[args.style]
+    if args.no_hands:
+        prompt += (" The person's hands are below the frame and never appear "
+                   "on screen at any point. Absolutely no hand gestures, no "
+                   "waving, no gesticulating, arms at rest.")
+    info(f"style: {'custom prompt' if args.prompt else args.style}"
+         f"{' + no-hands' if args.no_hands else ''}")
+    info(f"prompt: {prompt}")
     dur = audio_duration(audio)
     info(f"audio duration: {dur:.3f}s")
 

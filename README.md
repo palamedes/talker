@@ -152,6 +152,8 @@ talker {gif|mp4} <image> <audio> [options]
   --style PRESET        acting intensity: calm (default), natural, lively
   --prompt TEXT         custom scene and motion description; overrides
                         --style entirely
+  --no-hands            append a strong "hands never appear" clause to the
+                        prompt (stacks with --style or --prompt)
   --resolution {480p,720p}   default 480p
   --fps RATE            resample to your timeline rate: 30, 60, a fraction
                         like 30000/1001, or an alias: ntsc (29.97),
