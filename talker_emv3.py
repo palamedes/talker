@@ -156,8 +156,15 @@ def main():
     from safetensors.torch import load_file
     state_dict = load_file(transformer_path)
     state_dict = state_dict.get("state_dict", state_dict)
-    m, u = transformer.load_state_dict(state_dict, strict=False)
+    # assign=True: with meta-based loading the audio-injection layers (absent
+    # from the base checkpoint) are meta tensors, and a copying load is a
+    # silent no-op onto meta. The flash checkpoint is complete, so assign
+    # materializes every parameter.
+    m, u = transformer.load_state_dict(state_dict, strict=False, assign=True)
     print(f"[talker] flash transformer loaded (missing {len(m)}, unexpected {len(u)})")
+    leftover = [n for n, p in transformer.named_parameters() if p.is_meta]
+    if leftover:
+        sys.exit(f"[talker] still-meta parameters after flash load: {leftover[:8]}")
 
     vae = AutoencoderKLWan.from_pretrained(
         os.path.join(model_name, config["vae_kwargs"].get("vae_subpath", "vae")),
