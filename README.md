@@ -69,15 +69,14 @@ resume where they left off if interrupted.
 # preprocessing pass, it has nothing to separate and just wastes time.
 ./talker mp4 me.png voice.wav --fps ntsc --no-vocal-sep
 
-# Dial the acting. Default is "calm" (news-anchor stillness); the model
-# left to its own devices tends to overact.
-./talker mp4 me.png voice.wav --style natural
+# Acting style presets and custom prompts exist, but read the note below
+# about what actually controls the performance before leaning on them.
 ./talker mp4 me.png voice.wav --style lively
-
-# Or steer the whole scene yourself. A custom prompt overrides --style and
-# controls framing, gesture, and background.
 ./talker mp4 me.png intro.wav --prompt \
-  "A man speaks warmly to camera in a sunlit office, subtle hand gestures."
+  "A man speaks warmly to camera in a sunlit office."
+
+# Tone down exaggerated mouth movement (0.8-0.9 is the useful range)
+./talker mp4 me.png voice.wav --lip-scale 0.85
 
 # Higher resolution, if your card has the memory for it (24 GB+)
 ./talker mp4 me.png voice.wav --resolution 720p
@@ -88,6 +87,17 @@ resume where they left off if interrupted.
 # Name the output yourself
 ./talker mp4 me.png line42.wav -o clips/scene3_line42.mp4
 ```
+
+**What actually controls the performance** (learned the hard way): in this
+image-anchored mode the model's job is to animate YOUR PHOTO, and the photo
+outranks everything else. Scene, framing, posture, and whether hands exist
+all come from the image; a prompt cannot restyle them (we tested with an
+underwater scene prompt; the model politely ignored it). So direct with the
+photo: want no hand-waving, crop to chest-up with arms out of frame; want a
+calm read, pick a relaxed, neutral, closed-mouth portrait. Motion energy
+follows the audio; `--lip-scale` blends the audio embedding toward silence
+to relax exaggerated mouth movement. The text prompt is best treated as a
+caption of your photo plus a gentle motion hint, not a control surface.
 
 A workflow tip for editing projects: generate one clip per line or scene
 rather than one long take. A 15 second clip takes about 20 minutes; if the
