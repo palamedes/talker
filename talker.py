@@ -219,7 +219,8 @@ def run_inference(image: Path, audio: Path, dur: float, prompt: str,
     return videos[-1]
 
 
-def run_inference_ditto(image: Path, audio: Path, workdir: Path) -> Path:
+def run_inference_ditto(image: Path, audio: Path, emo: int | None,
+                        workdir: Path) -> Path:
     """Generate with the Ditto engine (PyTorch backend). Ditto outputs
     25 fps mp4 with the original audio muxed in — same contract as the
     longcat path, so the shared finalize/verify pipeline applies as-is."""
@@ -227,13 +228,15 @@ def run_inference_ditto(image: Path, audio: Path, workdir: Path) -> Path:
     outdir.mkdir()
     raw = outdir / "ditto_raw.mp4"
     cmd = [
-        str(VENV_DITTO / "bin" / "python"), "inference.py",
+        str(VENV_DITTO / "bin" / "python"), str(ROOT / "talker_ditto.py"),
         "--data_root", str(WEIGHTS_DITTO / "ditto_pytorch"),
         "--cfg_pkl", str(WEIGHTS_DITTO / "ditto_cfg" / "v0.4_hubert_cfg_pytorch.pkl"),
         "--audio_path", str(audio),
         "--source_path", str(image),
         "--output_path", str(raw),
     ]
+    if emo is not None:
+        cmd += ["--emo", str(emo)]
     info("running Ditto inference (motion-space, PyTorch backend)...")
     info("  " + " ".join(cmd))
     proc = subprocess.run(cmd, cwd=VENDOR_DITTO)
@@ -374,6 +377,11 @@ def main():
     ap.add_argument("--no-vocal-sep", action="store_true",
                     help="skip vocal separation — use when the audio is "
                          "clean speech (TTS/VO) with no music to remove")
+    ap.add_argument("--emo", type=int, default=None, metavar="N",
+                    help="ditto only: emotion index 0-7 (0 anger, 1 contempt, "
+                         "2 disgust, 3 fear, 4 happiness = upstream default, "
+                         "5 neutral, 6 sadness, 7 surprise). Try 5 if the "
+                         "avatar grins through everything.")
     ap.add_argument("--no-loudnorm", action="store_true",
                     help="skip loudness normalization so input volume "
                          "reaches the audio encoder as-is (experimental; "
@@ -393,6 +401,8 @@ def main():
         if not (WEIGHTS_BASE / "text_encoder").exists():
             die(f"base model components not found at {WEIGHTS_BASE} "
                 f"(tokenizer/text_encoder/vae) — re-run ./setup.sh to fetch them")
+        if args.emo is not None:
+            info("note: --emo is ignored by the longcat engine")
     else:  # ditto
         if not (VENV_DITTO / "bin" / "python").exists():
             die(f"ditto venv not found at {VENV_DITTO} — run ./setup-ditto.sh first")
@@ -457,7 +467,7 @@ def main():
     ok = False
     try:
         if args.engine == "ditto":
-            gen = run_inference_ditto(image, audio, workdir)
+            gen = run_inference_ditto(image, audio, args.emo, workdir)
         else:
             gen = run_inference(image, audio, dur, prompt, args.resolution,
                                 not args.no_int8, args.steps, args.no_vocal_sep,
