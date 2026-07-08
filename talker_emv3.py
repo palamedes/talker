@@ -226,9 +226,6 @@ def main():
     h, w = get_sample_size(image, args.sample_size)
     print(f"[talker] sample size {w}x{h}")
 
-    prompt_embeds, negative_prompt_embeds = pipeline.encode_prompt(
-        args.prompt, args.negative_prompt, dtype=dtype)
-
     _, _, clip_image = get_i2v_latent(image, None, video_length=args.partial_video_length,
                                       sample_size=[h, w])
 
@@ -261,8 +258,8 @@ def main():
 
         with torch.no_grad():
             sample = pipeline(
-                prompt_embeds=prompt_embeds,
-                negative_prompt_embeds=negative_prompt_embeds,
+                args.prompt,
+                negative_prompt=args.negative_prompt,
                 num_frames=partial,
                 audio_embeds=a,
                 audio_scale=args.audio_scale,
