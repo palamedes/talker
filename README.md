@@ -49,42 +49,32 @@ git clone git@github.com:palamedes/talker.git && cd talker
 `setup.sh` is safe to re-run. It skips anything already done, and downloads
 resume where they left off if interrupted.
 
-## Two engines
+## Engines (one recommendation, two cautionary tales)
 
-talker can drive two very different models behind the same CLI:
+talker can drive three models behind the same CLI. We evaluated all three
+on the same photo and voice. Short version: **use longcat.**
 
-- **longcat** (default): LongCat-Video-Avatar 1.5, a 13.6B video diffusion
-  model. Re-renders every pixel: photoreal, handles bodies and scenes,
-  slow (~90s of compute per second of video on a 16 GB card). Set up with
-  `./setup.sh`.
-- **echomimic**: [EchoMimicV3-Flash](https://github.com/antgroup/echomimic_v3)
-  (Ant Group, AAAI 2026), a 1.3B diffusion talking-head model on the Wan2.1
-  base. Paints real mouth shapes like longcat (puckers, corner movement),
-  runs in ~12 GB VRAM via built-in offload with no surgery needed, and its
-  control knobs genuinely work: text prompts and negative prompts are live
-  (CFG is active), and `--lip-scale` maps to the model's supported
-  audio-intensity parameter. `--steps` defaults to 8 (flash distilled).
-  Long clips are generated in 81-frame windows cross-faded over 8 frames.
-  `./setup-echomimic.sh` to install (~12 GB of weights, isolated).
+- **longcat** (default, recommended): LongCat-Video-Avatar 1.5, a 13.6B
+  video diffusion model. Re-renders every pixel: photoreal, real mouth
+  shapes, the only engine that passed our realism bar. Slow (~90s of
+  compute per second of video on a 16 GB card). `./setup.sh`.
+- **echomimic** (experimental, underwhelmed us):
+  [EchoMimicV3-Flash](https://github.com/antgroup/echomimic_v3), 1.3B
+  diffusion, ~12 GB VRAM with no surgery, working prompt and audio dials,
+  81-frame windowed long video. In our test it produced blurry, artifacted
+  output with poor lip sync. Caveats in its defense: it sizes its canvas
+  to your input image (feed it 700px+, not a thumbnail), and the offload
+  layer int8-quantizes it silently. If you try it, judge it on a large
+  image with `--steps 16`. `./setup-echomimic.sh` (~12 GB, isolated).
+- **ditto** (experimental, uncanny):
+  [Ditto](https://github.com/antgroup/ditto-talkinghead), motion-space
+  photo warping. Near-realtime, perfect identity, real control knobs
+  (`--emo`), but the mouth is six implicit keypoints: lips flap, corners
+  never move. Fine for drafts and timing previews; fails a realism bar.
+  `./setup-ditto.sh` (~10 GB, isolated).
 
-```sh
-./setup-echomimic.sh
-./talker mp4 me.png voice.wav --engine echomimic
-```
-
-- **ditto**: [Ditto](https://github.com/antgroup/ditto-talkinghead)
-  (Ant Group, ACM MM 2025), a motion-space talking-head specialist that
-  warps YOUR ACTUAL PHOTO: perfect identity, background untouched, hands
-  impossible, near-realtime, real control knobs (see `--emo`). **Honest
-  caveat before you install it:** the mouth is driven by six implicit
-  keypoints, so lips open and close but the mouth corners never pucker,
-  spread, or tense. Speech reads as uncanny at close inspection. Good for
-  drafts, timing previews, and stylized/low-scrutiny shots; it does not
-  pass a photorealism bar. `./setup-ditto.sh` to install (fully isolated;
-  ~10 GB; safe to add or remove at any time).
-
-Both engines share the same output pipeline, so the frame-exact sync
-guarantees below apply to either.
+All engines share the same output pipeline, so the frame-exact sync
+guarantees below apply regardless.
 
 ## Examples
 
