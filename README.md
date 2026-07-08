@@ -49,32 +49,22 @@ git clone git@github.com:palamedes/talker.git && cd talker
 `setup.sh` is safe to re-run. It skips anything already done, and downloads
 resume where they left off if interrupted.
 
-## Engines (one recommendation, two cautionary tales)
+## Why LongCat and not something lighter?
 
-talker can drive three models behind the same CLI. We evaluated all three
-on the same photo and voice. Short version: **use longcat.**
+We evaluated the obvious alternatives head to head on the same photo and
+voice before settling here, so you don't have to:
 
-- **longcat** (default, recommended): LongCat-Video-Avatar 1.5, a 13.6B
-  video diffusion model. Re-renders every pixel: photoreal, real mouth
-  shapes, the only engine that passed our realism bar. Slow (~90s of
-  compute per second of video on a 16 GB card). `./setup.sh`.
-- **echomimic** (experimental, underwhelmed us):
-  [EchoMimicV3-Flash](https://github.com/antgroup/echomimic_v3), 1.3B
-  diffusion, ~12 GB VRAM with no surgery, working prompt and audio dials,
-  81-frame windowed long video. In our test it produced blurry, artifacted
-  output with poor lip sync. Caveats in its defense: it sizes its canvas
-  to your input image (feed it 700px+, not a thumbnail), and the offload
-  layer int8-quantizes it silently. If you try it, judge it on a large
-  image with `--steps 16`. `./setup-echomimic.sh` (~12 GB, isolated).
-- **ditto** (experimental, uncanny):
-  [Ditto](https://github.com/antgroup/ditto-talkinghead), motion-space
-  photo warping. Near-realtime, perfect identity, real control knobs
-  (`--emo`), but the mouth is six implicit keypoints: lips flap, corners
-  never move. Fine for drafts and timing previews; fails a realism bar.
-  `./setup-ditto.sh` (~10 GB, isolated).
+- **Ditto** (motion-space photo warping): near-realtime and controllable,
+  but the mouth is driven by six implicit keypoints; lips flap while the
+  mouth corners never pucker or spread. Uncanny at any close inspection.
+- **EchoMimicV3-Flash** (1.3B diffusion): light enough for 12 GB and has
+  working control knobs, but even at full resolution and doubled steps the
+  output was soft, artifacted, and badly synced next to LongCat.
+- **daVinci-MagiHuman** (15B, the current benchmark leader): genuinely
+  promising architecture, but A100-class hardware only for now.
 
-All engines share the same output pipeline, so the frame-exact sync
-guarantees below apply regardless.
+Nothing at consumer scale matched LongCat's mouth realism. If that
+changes, this section will too.
 
 ## Examples
 
@@ -294,14 +284,13 @@ limit beyond your patience.
 
 ```
 talker           launcher script (activates .venv, runs talker.py)
-talker.py        CLI: engine dispatch, ffmpeg finalize, sync verify
-talker_infer.py  low-memory longcat inference driver (all the patches above)
+talker.py        CLI: input checks, segment math, ffmpeg finalize, verify
+talker_infer.py  low-memory inference driver (all the patches above)
 prosody_check.py score TTS takes for animation energy before rendering
-setup.sh         one-time longcat env + vendor + weights
-setup-ditto.sh   one-time ditto engine (optional, isolated)
-vendor/          unmodified upstream checkouts        (gitignored)
+setup.sh         one-time env + vendor clone + weight download
+vendor/          unmodified LongCat-Video checkout    (gitignored)
 weights/         model weights                        (gitignored)
-.venv/ .venv-ditto/  python environments              (gitignored)
+.venv/           python environment                   (gitignored)
 ```
 
 ## Acknowledgements
