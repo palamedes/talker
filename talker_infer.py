@@ -221,9 +221,19 @@ _orig_get_audio_embedding = pl.LongCatVideoAvatarPipeline.get_audio_embedding
 def _patched_get_audio_embedding(self, speech_array, fps=32, device="cpu",
                                  sample_rate=16000, model_type="avatar-v1.0"):
     print("[talker] computing audio embedding on CPU (Whisper, one-time)...")
-    return _orig_get_audio_embedding(
+    emb = _orig_get_audio_embedding(
         self, speech_array, fps=fps, device="cpu",
         sample_rate=sample_rate, model_type=model_type)
+    # Experimental lip-intensity dial. In distilled mode audio_guidance_scale
+    # is inert (no CFG), so the embedding magnitude is the only knob that
+    # controls how hard the audio drives the mouth. 1.0 = as trained;
+    # ~0.85-0.9 subtly relaxes exaggerated lip motion; too low undershoots
+    # articulation.
+    lip_scale = float(os.environ.get("TALKER_LIP_SCALE", "1.0"))
+    if lip_scale != 1.0:
+        print(f"[talker] scaling audio embedding by {lip_scale} (lip intensity)")
+        emb = emb * lip_scale
+    return emb
 
 
 pl.LongCatVideoAvatarPipeline.get_audio_embedding = _patched_get_audio_embedding

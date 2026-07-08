@@ -154,6 +154,9 @@ talker {gif|mp4} <image> <audio> [options]
                         --style entirely
   --no-hands            append a strong "hands never appear" clause to the
                         prompt (stacks with --style or --prompt)
+  --lip-scale S         lip-motion intensity (experimental). 1.0 = as
+                        trained; try 0.85-0.9 if mouth movement looks
+                        exaggerated. Too low undershoots articulation.
   --resolution {480p,720p}   default 480p
   --fps RATE            resample to your timeline rate: 30, 60, a fraction
                         like 30000/1001, or an alias: ntsc (29.97),

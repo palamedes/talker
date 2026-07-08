@@ -138,7 +138,8 @@ def segments_for(dur: float) -> int:
 
 def run_inference(image: Path, audio: Path, dur: float, prompt: str,
                   resolution: str, use_int8: bool, steps: int | None,
-                  no_vocal_sep: bool, workdir: Path) -> Path:
+                  no_vocal_sep: bool, lip_scale: float,
+                  workdir: Path) -> Path:
     input_json = workdir / "input.json"
     outdir = workdir / "out"
     outdir.mkdir()
@@ -177,6 +178,8 @@ def run_inference(image: Path, audio: Path, dur: float, prompt: str,
 
     if no_vocal_sep:
         env["TALKER_SKIP_VOCAL_SEP"] = "1"
+    if lip_scale != 1.0:
+        env["TALKER_LIP_SCALE"] = str(lip_scale)
 
     # The int8 DiT alone is ~14.3 GB; below ~20 GB VRAM it must partially
     # stream from RAM (see talker_infer.py). Auto-detect, allow override.
@@ -306,6 +309,10 @@ def main():
     ap.add_argument("--no-hands", action="store_true",
                     help="append a strong no-hands clause to the prompt "
                          "(works with --style or --prompt)")
+    ap.add_argument("--lip-scale", type=float, default=1.0, metavar="S",
+                    help="lip-motion intensity, experimental: 1.0 = as "
+                         "trained, try 0.85-0.9 if mouth movement looks "
+                         "exaggerated (too low undershoots articulation)")
     ap.add_argument("--resolution", choices=["480p", "720p"], default="480p")
     ap.add_argument("--no-int8", action="store_true",
                     help="run full-precision DiT (needs more VRAM)")
@@ -374,7 +381,7 @@ def main():
     try:
         gen = run_inference(image, audio, dur, prompt, args.resolution,
                             not args.no_int8, args.steps, args.no_vocal_sep,
-                            workdir)
+                            args.lip_scale, workdir)
         info(f"raw model output: {gen}")
         if args.format == "mp4":
             finalize_mp4(gen, audio, dur, out, args.fps, args.smooth)
