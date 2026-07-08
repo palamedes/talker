@@ -90,7 +90,7 @@ def parse_args():
                     choices=["Flow", "Flow_Unipc", "Flow_DPM++"])
     ap.add_argument("--shift", type=float, default=5.0)
     ap.add_argument("--seed", type=int, default=43)
-    ap.add_argument("--max_vram_frac", type=float, default=0.75)
+    ap.add_argument("--max_vram_frac", type=float, default=0.55)
     ap.add_argument("--teacache_threshold", type=float, default=0.1)
     return ap.parse_args()
 
@@ -286,6 +286,8 @@ def main():
             new_sample = torch.cat([new_sample, sample[:, :, OVERLAP:]], dim=2)
         else:
             new_sample = sample
+
+        torch.cuda.empty_cache()
 
         if init_frames + partial >= total_frames:
             break
