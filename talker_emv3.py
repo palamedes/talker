@@ -214,8 +214,10 @@ def main():
     print(f"[talker] {total_frames} frames total @ {fps} fps")
 
     emb = get_audio_embed(mel_input, extractor, audio_encoder, total_frames, sr)
-    idx = (torch.arange(5) - 2)
-    centers = torch.arange(0, total_frames, 1).unsqueeze(1) + idx.unsqueeze(0)
+    # explicit cpu: mmgp sets a global default device of cuda, which would
+    # otherwise put these index tensors on the GPU while emb is on cpu
+    idx = (torch.arange(5, device="cpu") - 2)
+    centers = torch.arange(0, total_frames, 1, device="cpu").unsqueeze(1) + idx.unsqueeze(0)
     centers = torch.clamp(centers, min=0, max=emb.shape[0] - 1)
     audio_embeds_full = emb[centers]  # [F, 5, 12, 768]
 
