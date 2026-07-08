@@ -225,6 +225,15 @@ def run_inference(image: Path, audio: Path, dur: float, prompt: str,
     return videos[-1]
 
 
+def engine_env() -> dict:
+    """Common subprocess env: expandable segments prevents the fragmentation
+    OOMs we measured on every engine that runs near the VRAM ceiling."""
+    env = os.environ.copy()
+    env.setdefault("PYTORCH_ALLOC_CONF", "expandable_segments:True")
+    env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+    return env
+
+
 def run_inference_ditto(image: Path, audio: Path, emo: int | None,
                         workdir: Path) -> Path:
     """Generate with the Ditto engine (PyTorch backend). Ditto outputs
@@ -245,7 +254,7 @@ def run_inference_ditto(image: Path, audio: Path, emo: int | None,
         cmd += ["--emo", str(emo)]
     info("running Ditto inference (motion-space, PyTorch backend)...")
     info("  " + " ".join(cmd))
-    proc = subprocess.run(cmd, cwd=VENDOR_DITTO)
+    proc = subprocess.run(cmd, cwd=VENDOR_DITTO, env=engine_env())
     if proc.returncode != 0:
         die(f"ditto inference failed (exit {proc.returncode})")
     if not raw.exists():
@@ -280,7 +289,7 @@ def run_inference_echomimic(image: Path, audio: Path, prompt: str,
         cmd += ["--num_inference_steps", str(steps)]
     info("running EchoMimicV3-Flash inference (1.3B diffusion, windowed)...")
     info("  " + " ".join(cmd))
-    proc = subprocess.run(cmd, cwd=VENDOR_EMV3)
+    proc = subprocess.run(cmd, cwd=VENDOR_EMV3, env=engine_env())
     if proc.returncode != 0:
         die(f"echomimic inference failed (exit {proc.returncode})")
     if not raw.exists():
