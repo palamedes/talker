@@ -25,6 +25,22 @@ sys.path.insert(0, os.getcwd())  # vendor/echomimic_v3
 
 import numpy as np
 import torch
+
+# Upstream's custom from_pretrained imports load_model_dict_into_meta from
+# diffusers.models.modeling_utils; newer diffusers moved it to
+# model_loading_utils. Without this shim their loader silently falls back
+# to low_cpu_mem_usage=False and the umt5-xxl text encoder gets the
+# process OOM-killed on ordinary machines.
+import diffusers.models.modeling_utils as _dmu
+if not hasattr(_dmu, "load_model_dict_into_meta"):
+    try:
+        from diffusers.models.model_loading_utils import load_model_dict_into_meta as _lmdim
+        _dmu.load_model_dict_into_meta = _lmdim
+        print("[talker] shimmed load_model_dict_into_meta for new diffusers")
+    except ImportError:
+        print("[talker] warning: no load_model_dict_into_meta anywhere; "
+              "loading will use more RAM (pin diffusers==0.30.1 if OOM-killed)")
+
 from omegaconf import OmegaConf
 from PIL import Image
 from transformers import AutoTokenizer, Wav2Vec2FeatureExtractor
