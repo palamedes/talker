@@ -41,6 +41,12 @@ VENV_DITTO = ROOT / ".venv-ditto"
 VENDOR_DITTO = ROOT / "vendor" / "ditto-talkinghead"
 WEIGHTS_DITTO = ROOT / "weights" / "ditto"
 
+# Optional third engine: EchoMimicV3-Flash (1.3B diffusion talking-head).
+# Fully isolated install — see setup-echomimic.sh.
+VENV_EMV3 = ROOT / ".venv-emv3"
+VENDOR_EMV3 = ROOT / "vendor" / "echomimic_v3"
+WEIGHTS_EMV3 = ROOT / "weights" / "echomimic"
+
 
 # Generation geometry for avatar-v1.5 (from the upstream demo): the first
 # segment yields 93 frames at 25 fps, each further segment appends
@@ -250,6 +256,38 @@ def run_inference_ditto(image: Path, audio: Path, emo: int | None,
     return raw
 
 
+def run_inference_echomimic(image: Path, audio: Path, prompt: str,
+                            lip_scale: float, steps: int | None,
+                            workdir: Path) -> Path:
+    """Generate with EchoMimicV3-Flash. Unlike longcat, text prompts and
+    negative prompts genuinely work here (CFG is active), and lip intensity
+    maps to the model's supported audio_scale parameter. Outputs a
+    video-only 25 fps mp4; the shared finalize step muxes the audio."""
+    outdir = workdir / "out"
+    outdir.mkdir()
+    raw = outdir / "emv3_raw.mp4"
+    cmd = [
+        str(VENV_EMV3 / "bin" / "python"), str(ROOT / "talker_emv3.py"),
+        "--weights_root", str(WEIGHTS_EMV3),
+        "--image_path", str(image),
+        "--audio_path", str(audio),
+        "--output_path", str(raw),
+        "--prompt", prompt,
+    ]
+    if lip_scale != 1.0:
+        cmd += ["--audio_scale", str(lip_scale)]
+    if steps is not None:
+        cmd += ["--num_inference_steps", str(steps)]
+    info("running EchoMimicV3-Flash inference (1.3B diffusion, windowed)...")
+    info("  " + " ".join(cmd))
+    proc = subprocess.run(cmd, cwd=VENDOR_EMV3)
+    if proc.returncode != 0:
+        die(f"echomimic inference failed (exit {proc.returncode})")
+    if not raw.exists():
+        die(f"echomimic produced no output at {raw}")
+    return raw
+
+
 def fps_filter(fps: Fraction, smooth: bool) -> str:
     if smooth:
         # Motion-compensated interpolation: synthesizes in-between frames
@@ -340,11 +378,13 @@ def main():
                     help="output container (gif = video only, mp4 = with audio)")
     ap.add_argument("image", type=Path, help="portrait image (png/jpg)")
     ap.add_argument("audio", type=Path, help="speech audio (wav/mp3/...)")
-    ap.add_argument("--engine", choices=["longcat", "ditto"], default="longcat",
-                    help="generation engine: longcat (13.6B video diffusion, "
-                         "photoreal, slow) or ditto (motion-space specialist, "
-                         "warps your actual photo, near-realtime; needs "
-                         "./setup-ditto.sh once)")
+    ap.add_argument("--engine", choices=["longcat", "echomimic", "ditto"],
+                    default="longcat",
+                    help="generation engine: longcat (13.6B diffusion, "
+                         "photoreal, slow), echomimic (1.3B diffusion, real "
+                         "visemes + working prompt/audio dials, lighter; "
+                         "./setup-echomimic.sh once), ditto (photo-warping, "
+                         "near-realtime, uncanny mouth; ./setup-ditto.sh)")
     ap.add_argument("-o", "--output", type=Path,
                     help="output path (default: output/<audio-stem>.<format>)")
     ap.add_argument("--style", choices=sorted(STYLE_PROMPTS), default="calm",
@@ -403,6 +443,24 @@ def main():
                 f"(tokenizer/text_encoder/vae) — re-run ./setup.sh to fetch them")
         if args.emo is not None:
             info("note: --emo is ignored by the longcat engine")
+    elif args.engine == "echomimic":
+        if not (VENV_EMV3 / "bin" / "python").exists():
+            die(f"echomimic venv not found at {VENV_EMV3} — run ./setup-echomimic.sh first")
+        if not (VENDOR_EMV3 / "infer_flash.py").exists():
+            die(f"echomimic_v3 not found at {VENDOR_EMV3} — run ./setup-echomimic.sh first")
+        if not (WEIGHTS_EMV3 / "Wan2.1-Fun-V1.1-1.3B-InP").exists():
+            die(f"echomimic weights not found at {WEIGHTS_EMV3} — run ./setup-echomimic.sh first")
+        ignored = []
+        if args.no_vocal_sep:
+            ignored.append("--no-vocal-sep")
+        if args.no_loudnorm:
+            ignored.append("--no-loudnorm")
+        if args.no_int8:
+            ignored.append("--no-int8")
+        if args.emo is not None:
+            ignored.append("--emo (ditto only)")
+        if ignored:
+            info(f"note: ignored by the echomimic engine: {', '.join(ignored)}")
     else:  # ditto
         if not (VENV_DITTO / "bin" / "python").exists():
             die(f"ditto venv not found at {VENV_DITTO} — run ./setup-ditto.sh first")
@@ -456,7 +514,7 @@ def main():
                    "on screen at any point. Absolutely no hand gestures, no "
                    "waving, no gesticulating, arms at rest.")
     info(f"engine: {args.engine}")
-    if args.engine == "longcat":
+    if args.engine in ("longcat", "echomimic"):
         info(f"style: {'custom prompt' if args.prompt else args.style}"
              f"{' + no-hands' if args.no_hands else ''}")
         info(f"prompt: {prompt}")
@@ -468,6 +526,9 @@ def main():
     try:
         if args.engine == "ditto":
             gen = run_inference_ditto(image, audio, args.emo, workdir)
+        elif args.engine == "echomimic":
+            gen = run_inference_echomimic(image, audio, prompt,
+                                          args.lip_scale, args.steps, workdir)
         else:
             gen = run_inference(image, audio, dur, prompt, args.resolution,
                                 not args.no_int8, args.steps, args.no_vocal_sep,

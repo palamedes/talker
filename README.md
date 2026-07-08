@@ -57,23 +57,34 @@ talker can drive two very different models behind the same CLI:
   model. Re-renders every pixel: photoreal, handles bodies and scenes,
   slow (~90s of compute per second of video on a 16 GB card). Set up with
   `./setup.sh`.
-- **ditto**: [Ditto](https://github.com/antgroup/ditto-talkinghead)
-  (Ant Group, ACM MM 2025), a motion-space talking-head specialist. It
-  generates head/face motion from the audio and warps YOUR ACTUAL PHOTO to
-  match: perfect identity, background untouched, hands impossible,
-  near-realtime, ~4 GB of downloads and a few GB of VRAM. Head and face
-  only, no body acting. Set up with `./setup-ditto.sh` (fully isolated
-  from the longcat install; safe to add or remove at any time).
+- **echomimic**: [EchoMimicV3-Flash](https://github.com/antgroup/echomimic_v3)
+  (Ant Group, AAAI 2026), a 1.3B diffusion talking-head model on the Wan2.1
+  base. Paints real mouth shapes like longcat (puckers, corner movement),
+  runs in ~12 GB VRAM via built-in offload with no surgery needed, and its
+  control knobs genuinely work: text prompts and negative prompts are live
+  (CFG is active), and `--lip-scale` maps to the model's supported
+  audio-intensity parameter. `--steps` defaults to 8 (flash distilled).
+  Long clips are generated in 81-frame windows cross-faded over 8 frames.
+  `./setup-echomimic.sh` to install (~12 GB of weights, isolated).
 
 ```sh
-./setup-ditto.sh                              # one time, quick
-./talker mp4 me.png voice.wav --engine ditto
+./setup-echomimic.sh
+./talker mp4 me.png voice.wav --engine echomimic
 ```
 
-Rule of thumb: calm head-and-shoulders delivery (newsreader, framed
-portrait): try ditto first, iterate in near-realtime. Expressive scenes,
-bodies, or stylized shots: longcat. Both engines share the same output
-pipeline, so the frame-exact sync guarantees below apply to either.
+- **ditto**: [Ditto](https://github.com/antgroup/ditto-talkinghead)
+  (Ant Group, ACM MM 2025), a motion-space talking-head specialist that
+  warps YOUR ACTUAL PHOTO: perfect identity, background untouched, hands
+  impossible, near-realtime, real control knobs (see `--emo`). **Honest
+  caveat before you install it:** the mouth is driven by six implicit
+  keypoints, so lips open and close but the mouth corners never pucker,
+  spread, or tense. Speech reads as uncanny at close inspection. Good for
+  drafts, timing previews, and stylized/low-scrutiny shots; it does not
+  pass a photorealism bar. `./setup-ditto.sh` to install (fully isolated;
+  ~10 GB; safe to add or remove at any time).
+
+Both engines share the same output pipeline, so the frame-exact sync
+guarantees below apply to either.
 
 ## Examples
 
