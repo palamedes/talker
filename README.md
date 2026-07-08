@@ -101,6 +101,15 @@ follows the audio; `--lip-scale` blends the audio embedding toward silence
 to relax exaggerated mouth movement. The text prompt is best treated as a
 caption of your photo plus a gentle motion hint, not a control surface.
 
+Since the voice's delivery is what actually sets the animation energy,
+`prosody_check.py` scores candidate TTS takes on the qualities the animator
+responds to (pitch swings, emphasis, attack, rate) so you can pick the
+calmest read in seconds instead of after a long render:
+
+```sh
+.venv/bin/python prosody_check.py take1.wav take2.wav take3.wav
+```
+
 A workflow tip for editing projects: generate one clip per line or scene
 rather than one long take. A 15 second clip takes about 20 minutes; if the
 avatar does something odd you regenerate 15 seconds, not 5 minutes. Identity
