@@ -6,3 +6,9 @@ output/
 __pycache__/
 *.gif
 *.mp4
+# never accidentally commit source media (face photos, voice tracks)
+*.png
+*.jpg
+*.jpeg
+*.wav
+*.mp3
