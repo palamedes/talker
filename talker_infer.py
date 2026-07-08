@@ -224,15 +224,21 @@ def _patched_get_audio_embedding(self, speech_array, fps=32, device="cpu",
     emb = _orig_get_audio_embedding(
         self, speech_array, fps=fps, device="cpu",
         sample_rate=sample_rate, model_type=model_type)
-    # Experimental lip-intensity dial. In distilled mode audio_guidance_scale
-    # is inert (no CFG), so the embedding magnitude is the only knob that
-    # controls how hard the audio drives the mouth. 1.0 = as trained;
-    # ~0.85-0.9 subtly relaxes exaggerated lip motion; too low undershoots
-    # articulation.
+    # Experimental lip-intensity dial. audio_guidance_scale is inert in
+    # distilled mode (no CFG), and naive amplitude scaling is erased by the
+    # LayerNorm in front of the audio cross-attention. What survives a
+    # LayerNorm is DIRECTION, so we interpolate each token toward the
+    # embedding Whisper produces for silence: 1.0 = as trained, 0.8 = mouth
+    # driven 80% as hard, 0.0 = the model hears silence.
     lip_scale = float(os.environ.get("TALKER_LIP_SCALE", "1.0"))
     if lip_scale != 1.0:
-        print(f"[talker] scaling audio embedding by {lip_scale} (lip intensity)")
-        emb = emb * lip_scale
+        import numpy as np
+        print(f"[talker] lip intensity {lip_scale}: blending audio embedding "
+              f"toward the silence embedding (second Whisper pass)...")
+        silence = _orig_get_audio_embedding(
+            self, np.zeros_like(speech_array), fps=fps, device="cpu",
+            sample_rate=sample_rate, model_type=model_type)
+        emb = silence + lip_scale * (emb - silence)
     return emb
 
 
