@@ -43,7 +43,8 @@ pip install \
     librosa==0.10.2.post1 soundfile==0.13.0 soxr==0.5.0.post1 audioread==3.0.1 \
     opencv-python-headless==4.10.0.84 imageio==2.36.1 imageio-ffmpeg==0.5.1 \
     scikit-image==0.25.0 scikit-learn==1.6.0 scipy==1.15.0 numba==0.60.0 \
-    filetype==1.2.0 tqdm cython pooch onnxruntime mediapipe "huggingface_hub[cli]"
+    filetype==1.2.0 tqdm cython pooch onnxruntime mediapipe einops \
+    "huggingface_hub[cli]"
 
 step "Cloning ditto-talkinghead"
 if [[ ! -d "$VENDOR" ]]; then
