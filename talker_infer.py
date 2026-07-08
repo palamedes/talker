@@ -215,6 +215,23 @@ def _cpu_audio_encoder(path, model_type):
 
 demo.get_audio_encoder = _cpu_audio_encoder
 
+# Optional: skip loudness normalization (TALKER_NO_LOUDNORM=1) so input
+# volume reaches Whisper unmodified. Experimental; Whisper's own log-mel
+# extraction is largely self-normalizing, so expect a muted effect at best,
+# and note the model was trained on -23 LUFS audio.
+_orig_loudness_norm = pl.LongCatVideoAvatarPipeline._loudness_norm
+
+
+def _patched_loudness_norm(self, audio_array, sr=16000, lufs=-23, threshold=100):
+    if os.environ.get("TALKER_NO_LOUDNORM") == "1":
+        print("[talker] loudness normalization DISABLED (raw levels to Whisper)")
+        return audio_array
+    return _orig_loudness_norm(self, audio_array, sr=sr, lufs=lufs,
+                               threshold=threshold)
+
+
+pl.LongCatVideoAvatarPipeline._loudness_norm = _patched_loudness_norm
+
 _orig_get_audio_embedding = pl.LongCatVideoAvatarPipeline.get_audio_embedding
 
 

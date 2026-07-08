@@ -138,7 +138,7 @@ def segments_for(dur: float) -> int:
 
 def run_inference(image: Path, audio: Path, dur: float, prompt: str,
                   resolution: str, use_int8: bool, steps: int | None,
-                  no_vocal_sep: bool, lip_scale: float,
+                  no_vocal_sep: bool, lip_scale: float, no_loudnorm: bool,
                   workdir: Path) -> Path:
     input_json = workdir / "input.json"
     outdir = workdir / "out"
@@ -180,6 +180,8 @@ def run_inference(image: Path, audio: Path, dur: float, prompt: str,
         env["TALKER_SKIP_VOCAL_SEP"] = "1"
     if lip_scale != 1.0:
         env["TALKER_LIP_SCALE"] = str(lip_scale)
+    if no_loudnorm:
+        env["TALKER_NO_LOUDNORM"] = "1"
 
     # The int8 DiT alone is ~14.3 GB; below ~20 GB VRAM it must partially
     # stream from RAM (see talker_infer.py). Auto-detect, allow override.
@@ -332,6 +334,10 @@ def main():
     ap.add_argument("--no-vocal-sep", action="store_true",
                     help="skip vocal separation — use when the audio is "
                          "clean speech (TTS/VO) with no music to remove")
+    ap.add_argument("--no-loudnorm", action="store_true",
+                    help="skip loudness normalization so input volume "
+                         "reaches the audio encoder as-is (experimental; "
+                         "the encoder is largely level-invariant anyway)")
     ap.add_argument("--keep-workdir", action="store_true",
                     help="keep the temp working dir (raw model output)")
     args = ap.parse_args()
@@ -382,7 +388,7 @@ def main():
     try:
         gen = run_inference(image, audio, dur, prompt, args.resolution,
                             not args.no_int8, args.steps, args.no_vocal_sep,
-                            args.lip_scale, workdir)
+                            args.lip_scale, args.no_loudnorm, workdir)
         info(f"raw model output: {gen}")
         if args.format == "mp4":
             finalize_mp4(gen, audio, dur, out, args.fps, args.smooth)
