@@ -35,6 +35,13 @@ WEIGHTS_BASE = ROOT / "weights" / "LongCat-Video"
 # Our low-memory driver wrapping the upstream demo (see talker_infer.py).
 INFER_SCRIPT = ROOT / "talker_infer.py"
 
+# Optional second engine: Ditto (motion-space talking-head specialist).
+# Fully isolated install — see setup-ditto.sh.
+VENV_DITTO = ROOT / ".venv-ditto"
+VENDOR_DITTO = ROOT / "vendor" / "ditto-talkinghead"
+WEIGHTS_DITTO = ROOT / "weights" / "ditto"
+
+
 # Generation geometry for avatar-v1.5 (from the upstream demo): the first
 # segment yields 93 frames at 25 fps, each further segment appends
 # 93 - 13 = 80 new frames (13 are conditioning overlap).
@@ -212,6 +219,34 @@ def run_inference(image: Path, audio: Path, dur: float, prompt: str,
     return videos[-1]
 
 
+def run_inference_ditto(image: Path, audio: Path, workdir: Path) -> Path:
+    """Generate with the Ditto engine (PyTorch backend). Ditto outputs
+    25 fps mp4 with the original audio muxed in — same contract as the
+    longcat path, so the shared finalize/verify pipeline applies as-is."""
+    outdir = workdir / "out"
+    outdir.mkdir()
+    raw = outdir / "ditto_raw.mp4"
+    cmd = [
+        str(VENV_DITTO / "bin" / "python"), "inference.py",
+        "--data_root", str(WEIGHTS_DITTO / "ditto_pytorch"),
+        "--cfg_pkl", str(WEIGHTS_DITTO / "ditto_cfg" / "v0.4_hubert_cfg_pytorch.pkl"),
+        "--audio_path", str(audio),
+        "--source_path", str(image),
+        "--output_path", str(raw),
+    ]
+    info("running Ditto inference (motion-space, PyTorch backend)...")
+    info("  " + " ".join(cmd))
+    proc = subprocess.run(cmd, cwd=VENDOR_DITTO)
+    if proc.returncode != 0:
+        die(f"ditto inference failed (exit {proc.returncode})")
+    if not raw.exists():
+        videos = sorted(outdir.rglob("*.mp4"), key=lambda p: p.stat().st_mtime)
+        if not videos:
+            die(f"ditto produced no .mp4 in {outdir}")
+        raw = videos[-1]
+    return raw
+
+
 def fps_filter(fps: Fraction, smooth: bool) -> str:
     if smooth:
         # Motion-compensated interpolation: synthesizes in-between frames
@@ -302,6 +337,11 @@ def main():
                     help="output container (gif = video only, mp4 = with audio)")
     ap.add_argument("image", type=Path, help="portrait image (png/jpg)")
     ap.add_argument("audio", type=Path, help="speech audio (wav/mp3/...)")
+    ap.add_argument("--engine", choices=["longcat", "ditto"], default="longcat",
+                    help="generation engine: longcat (13.6B video diffusion, "
+                         "photoreal, slow) or ditto (motion-space specialist, "
+                         "warps your actual photo, near-realtime; needs "
+                         "./setup-ditto.sh once)")
     ap.add_argument("-o", "--output", type=Path,
                     help="output path (default: output/<audio-stem>.<format>)")
     ap.add_argument("--style", choices=sorted(STYLE_PROMPTS), default="calm",
@@ -342,15 +382,43 @@ def main():
                     help="keep the temp working dir (raw model output)")
     args = ap.parse_args()
 
-    for binary in ("ffmpeg", "ffprobe", "torchrun"):
+    for binary in ("ffmpeg", "ffprobe"):
         need(binary)
-    if not (VENDOR / "run_demo_avatar_single_audio_to_video.py").exists():
-        die(f"LongCat-Video not found at {VENDOR} — run ./setup.sh first")
-    if not WEIGHTS.exists():
-        die(f"weights not found at {WEIGHTS} — run ./setup.sh first")
-    if not (WEIGHTS_BASE / "text_encoder").exists():
-        die(f"base model components not found at {WEIGHTS_BASE} "
-            f"(tokenizer/text_encoder/vae) — re-run ./setup.sh to fetch them")
+    if args.engine == "longcat":
+        need("torchrun")
+        if not (VENDOR / "run_demo_avatar_single_audio_to_video.py").exists():
+            die(f"LongCat-Video not found at {VENDOR} — run ./setup.sh first")
+        if not WEIGHTS.exists():
+            die(f"weights not found at {WEIGHTS} — run ./setup.sh first")
+        if not (WEIGHTS_BASE / "text_encoder").exists():
+            die(f"base model components not found at {WEIGHTS_BASE} "
+                f"(tokenizer/text_encoder/vae) — re-run ./setup.sh to fetch them")
+    else:  # ditto
+        if not (VENV_DITTO / "bin" / "python").exists():
+            die(f"ditto venv not found at {VENV_DITTO} — run ./setup-ditto.sh first")
+        if not (VENDOR_DITTO / "inference.py").exists():
+            die(f"ditto not found at {VENDOR_DITTO} — run ./setup-ditto.sh first")
+        if not (WEIGHTS_DITTO / "ditto_pytorch").exists():
+            die(f"ditto weights not found at {WEIGHTS_DITTO} — run ./setup-ditto.sh first")
+        ignored = []
+        if args.prompt:
+            ignored.append("--prompt")
+        if args.style != "calm":
+            ignored.append("--style")
+        if args.no_hands:
+            ignored.append("--no-hands")
+        if args.lip_scale != 1.0:
+            ignored.append("--lip-scale")
+        if args.no_vocal_sep:
+            ignored.append("--no-vocal-sep")
+        if args.no_loudnorm:
+            ignored.append("--no-loudnorm")
+        if args.steps is not None:
+            ignored.append("--steps")
+        if args.no_int8:
+            ignored.append("--no-int8")
+        if ignored:
+            info(f"note: ignored by the ditto engine: {', '.join(ignored)}")
     if not args.image.is_file():
         die(f"image not found: {args.image}")
     if not args.audio.is_file():
@@ -377,18 +445,23 @@ def main():
         prompt += (" The person's hands are below the frame and never appear "
                    "on screen at any point. Absolutely no hand gestures, no "
                    "waving, no gesticulating, arms at rest.")
-    info(f"style: {'custom prompt' if args.prompt else args.style}"
-         f"{' + no-hands' if args.no_hands else ''}")
-    info(f"prompt: {prompt}")
+    info(f"engine: {args.engine}")
+    if args.engine == "longcat":
+        info(f"style: {'custom prompt' if args.prompt else args.style}"
+             f"{' + no-hands' if args.no_hands else ''}")
+        info(f"prompt: {prompt}")
     dur = audio_duration(audio)
     info(f"audio duration: {dur:.3f}s")
 
     workdir = Path(tempfile.mkdtemp(prefix="talker-"))
     ok = False
     try:
-        gen = run_inference(image, audio, dur, prompt, args.resolution,
-                            not args.no_int8, args.steps, args.no_vocal_sep,
-                            args.lip_scale, args.no_loudnorm, workdir)
+        if args.engine == "ditto":
+            gen = run_inference_ditto(image, audio, workdir)
+        else:
+            gen = run_inference(image, audio, dur, prompt, args.resolution,
+                                not args.no_int8, args.steps, args.no_vocal_sep,
+                                args.lip_scale, args.no_loudnorm, workdir)
         info(f"raw model output: {gen}")
         if args.format == "mp4":
             finalize_mp4(gen, audio, dur, out, args.fps, args.smooth)

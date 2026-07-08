@@ -49,6 +49,32 @@ git clone git@github.com:palamedes/talker.git && cd talker
 `setup.sh` is safe to re-run. It skips anything already done, and downloads
 resume where they left off if interrupted.
 
+## Two engines
+
+talker can drive two very different models behind the same CLI:
+
+- **longcat** (default): LongCat-Video-Avatar 1.5, a 13.6B video diffusion
+  model. Re-renders every pixel: photoreal, handles bodies and scenes,
+  slow (~90s of compute per second of video on a 16 GB card). Set up with
+  `./setup.sh`.
+- **ditto**: [Ditto](https://github.com/antgroup/ditto-talkinghead)
+  (Ant Group, ACM MM 2025), a motion-space talking-head specialist. It
+  generates head/face motion from the audio and warps YOUR ACTUAL PHOTO to
+  match: perfect identity, background untouched, hands impossible,
+  near-realtime, ~4 GB of downloads and a few GB of VRAM. Head and face
+  only, no body acting. Set up with `./setup-ditto.sh` (fully isolated
+  from the longcat install; safe to add or remove at any time).
+
+```sh
+./setup-ditto.sh                              # one time, quick
+./talker mp4 me.png voice.wav --engine ditto
+```
+
+Rule of thumb: calm head-and-shoulders delivery (newsreader, framed
+portrait): try ditto first, iterate in near-realtime. Expressive scenes,
+bodies, or stylized shots: longcat. Both engines share the same output
+pipeline, so the frame-exact sync guarantees below apply to either.
+
 ## Examples
 
 ```sh
@@ -267,12 +293,14 @@ limit beyond your patience.
 
 ```
 talker           launcher script (activates .venv, runs talker.py)
-talker.py        CLI: input checks, segment math, ffmpeg finalize, verify
-talker_infer.py  the low-memory inference driver (all the patches above)
-setup.sh         one-time env + vendor clone + weight download
-vendor/          unmodified LongCat-Video checkout   (gitignored)
-weights/         model weights                       (gitignored)
-.venv/           python environment                  (gitignored)
+talker.py        CLI: engine dispatch, ffmpeg finalize, sync verify
+talker_infer.py  low-memory longcat inference driver (all the patches above)
+prosody_check.py score TTS takes for animation energy before rendering
+setup.sh         one-time longcat env + vendor + weights
+setup-ditto.sh   one-time ditto engine (optional, isolated)
+vendor/          unmodified upstream checkouts        (gitignored)
+weights/         model weights                        (gitignored)
+.venv/ .venv-ditto/  python environments              (gitignored)
 ```
 
 ## Acknowledgements
