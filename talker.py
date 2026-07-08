@@ -310,9 +310,10 @@ def main():
                     help="append a strong no-hands clause to the prompt "
                          "(works with --style or --prompt)")
     ap.add_argument("--lip-scale", type=float, default=1.0, metavar="S",
-                    help="lip-motion intensity, experimental: 1.0 = as "
-                         "trained, try 0.85-0.9 if mouth movement looks "
-                         "exaggerated (too low undershoots articulation)")
+                    help="lip-motion intensity. Response is NONLINEAR: "
+                         "1.0 down to ~0.7 looks identical, ~0.3 is a "
+                         "nearly still mouth; the useful range is about "
+                         "0.4-0.6 (measured)")
     ap.add_argument("--resolution", choices=["480p", "720p"], default="480p")
     ap.add_argument("--no-int8", action="store_true",
                     help="run full-precision DiT (needs more VRAM)")

@@ -75,8 +75,10 @@ resume where they left off if interrupted.
 ./talker mp4 me.png intro.wav --prompt \
   "A man speaks warmly to camera in a sunlit office."
 
-# Tone down exaggerated mouth movement (0.8-0.9 is the useful range)
-./talker mp4 me.png voice.wav --lip-scale 0.85
+# Tone down exaggerated mouth movement. The response is nonlinear: values
+# from 1.0 down to about 0.7 look identical, 0.3 is a nearly still mouth,
+# and the useful range is roughly 0.4 to 0.6.
+./talker mp4 me.png voice.wav --lip-scale 0.5
 
 # Higher resolution, if your card has the memory for it (24 GB+)
 ./talker mp4 me.png voice.wav --resolution 720p
@@ -164,9 +166,9 @@ talker {gif|mp4} <image> <audio> [options]
                         --style entirely
   --no-hands            append a strong "hands never appear" clause to the
                         prompt (stacks with --style or --prompt)
-  --lip-scale S         lip-motion intensity (experimental). 1.0 = as
-                        trained; try 0.85-0.9 if mouth movement looks
-                        exaggerated. Too low undershoots articulation.
+  --lip-scale S         lip-motion intensity. Nonlinear response: 1.0 to
+                        ~0.7 look identical, 0.3 is a nearly still mouth;
+                        useful range is roughly 0.4-0.6.
   --resolution {480p,720p}   default 480p
   --fps RATE            resample to your timeline rate: 30, 60, a fraction
                         like 30000/1001, or an alias: ntsc (29.97),
